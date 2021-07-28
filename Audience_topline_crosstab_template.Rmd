@@ -310,9 +310,8 @@ update_columns_with_message_text = function(df,col){
   return (df)
 }
 
-#Here is a function that can be used to update a table's css styling
-#Note that the default num_rows=7 is a standard table of the first 5 rows are regular
-#the last two are subtotals
+#Here is a function that can be used to update a table's css styling, specifically it's used to bold the subtotal rows
+#Note that the default num_rows=7 is a standard table of the first 5 rows are regular and the last two are subtotals
 update_table_styling = function(df,caption, num_rows=7){
   #where contains the position of where the styling will take effect
   #Note that where starts at index 0
@@ -326,20 +325,7 @@ update_table_styling = function(df,caption, num_rows=7){
   return (htmlTable(table, css.cell=css.cell, caption=caption,align="c"))
 }
 
-#Here is a function that can be used to update a table's css styling
-update_table_styling2 = function(df, caption = "<br><br>"){
-  num_rows = nrow(df)
-  #where contains the position of where the styling will take effect
-  #Note that where starts at index 0
-  where = rbind(c(num_rows-2,1), c(num_rows-1,1), c(num_rows-1,2), c(num_rows-1,3), c(num_rows,2), c(num_rows,3), c(num_rows-1,4), c(num_rows,4), c(num_rows-1,5), c(num_rows,5))
-  style = c("font-weight: bold")
-  css.cell = matrix("",nrow(df),ncol(df))
-  css.cell[where] = style
-  table = addHtmlTableStyle(df,css.class="standard")
-  
-  
-  return (htmlTable(table, css.cell=css.cell, caption=caption,align="c"))
-}
+
 
 
 #Could use for questions like
@@ -416,7 +402,8 @@ matrix_qs = c("Q9_1",  "Q9_3", "Q9_5", "Q9_9")
 
 
 for (col in matrix_q){
-  table= create_toplines_with_counts_matrix(col,df)
+  #TODO Update the subtotal groupings if not
+  table= create_toplines_with_counts_matrix(col,df, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4)
   
   #TODO update subtotal groups here if different values should be subtotaled together
   styled_table = update_table_styling_big_matrix(table,  num_rows = 8)
@@ -446,7 +433,8 @@ display_table = function(col,df){
     topline_table = create_topline_cro(temp,col,split)
   }
   else{
-    topline_table = create_topline_cro_subtotal(temp,col,split)
+    #TODO update subtotal groupings here if don't want 1:2 to be grouped and 3:4 to be grouped. For example, could replace 3:4 with 4:5
+    topline_table = create_topline_cro_subtotal(temp,col,split, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4)
   }
   
   table_output = addHtmlTableStyle( x=topline_table, css.rgroup = c("font-weight:normal"), css.cell = c("width: 500px", rep("width: 75px", ncol(topline_table) - 1)))
@@ -480,12 +468,14 @@ for (q in names(poll_qs)){
       table = table %>% set_caption(paste("<br><br>",var_lab(df[[q]])))
      
       #Now the table is like a matrix so apply the matrix styling
+      #TODO update num_rows for specific questions if not 7 as expected
       styled_table = update_table_styling_big_matrix(table,  num_rows = 7)
       print(styled_table)
     }
   
   else{
-    print(update_table_styling(table,caption=paste("<br><br>")))
+    #TODO update num_rows for specific questions if not 7 as expected
+    print(update_table_styling(table,caption=paste("<br><br>"), num_rows=7))
   }
   }
 
