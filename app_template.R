@@ -1,4 +1,4 @@
-#To run, type this in console: runApp("Desktop/Poll_analysis_code_dev/crosstab_app/")
+#To run, type this in console: runApp("[INSERT PATH NAME]")
 #runApp("App-1", display.mode = "showcase")
 #Note may need to check getwd()
 
@@ -105,7 +105,7 @@ ui <- fluidPage(title = "Fill Me In",
                                        ),
                                        
                                        mainPanel(
-                                         tableOutput("table2") 
+                                         htmlOutput("selected_var2"),tableOutput("table2") 
                                        )
                                      ),
                             )
@@ -135,6 +135,27 @@ server <- function(input, output) {
       message=get_column_message(df[[i]])
       if (message != ""){
         str_messages=paste(str_messages,"<b>",get_label(df[[i]]),"</b> : ",message,"<br><br>") 
+      }
+    }
+    HTML(paste(str_messages,"<br>"))
+  })
+  
+  #For advanced crosstab, display messages
+  output$selected_var2 <- renderUI({ 
+    #It seems easier to ensure line breaks by using renderUI of HTML vs. renderText
+    
+    #If there is a message with this label, display it.
+    str_messages = "<br>"
+    for (q in c(input$var_demo_adv, input$var_demo_adv2)){
+      #print(q)
+      if (q %in% question_labels){
+        print(q)
+        i = names(poll_qs)[which(question_labels==q)]
+        message=get_column_message(df[[i]])
+        print(message)
+        if (message != ""){
+          str_messages=paste(str_messages,"<b>",get_label(df[[i]]),"</b> : ",message,"<br><br>") 
+        }
       }
     }
     HTML(paste(str_messages,"<br>"))

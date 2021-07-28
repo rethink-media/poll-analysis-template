@@ -86,6 +86,45 @@ get_label_list = function(var_names){
 question_labels = get_label_list(names(poll_qs))
 
 
+#TODO Update file_name path or remove this chunk if no messages
+#Poll messaging
+#Reading in a table that maps the message text to the message labels
+messages = read_csv("message_codes.csv")
+messages_vec = messages$message
+names(messages_vec) = messages$var_lab
+
+#Message helper functions to apply any message strings that didn't come in from Qualtrics
+get_column_message = function (col_vec) {
+  #Getting the short message label like Preparation
+  message_label = var_lab(col_vec)
+  
+  #Splitting the short message label to remove the Emotion appending of E - Selected Choice
+  message_label = strsplit(message_label," E - Selected Choice")[[1]]
+  
+  message_text = ""
+  if (message_label %in% names(messages_vec)){
+    message_text = messages_vec[[message_label]] 
+  }
+  return (message_text)
+}
+
+update_columns_with_message_text = function(df,col){
+  message_text = get_column_message(df[[col]])
+  #Splitting the short message label to remove the Emotion appending of E - Selected Choice
+  message_label = var_lab(df[[col]])
+  message_label = strsplit(message_label," E - Selected Choice")[[1]]
+  
+  #Check if message_text is empty, if so, don't append the text and ":"
+  if (message_text!=""){
+    var_lab(df[[col]]) = paste("<b>",message_label,":</b>",message_text) 
+  }
+  else{
+    var_lab(df[[col]]) = paste("<b>",message_label,"</b>")
+  }
+  return (df)
+}
+
+
 #TODO: Will need to update for new poll
 #List of questions from the Poll that do not need subtotals
 no_subtotal_qs = c("Q10","Q38","Q40", "Q97", "mover_Q10_Q97", "mover_cond_Q10_Q97")
