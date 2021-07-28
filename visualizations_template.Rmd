@@ -49,7 +49,7 @@ cat(paste(st))
 #TODO Update file path to raw sav file, this is the file that contains the data with weights and audiences already applied
 
 #Reading in the data
-file_name = "test/raw_poll_post_weighting_test.sav"
+file_name = "raw_poll_post_weighting_test.sav"
 raw_poll=haven::read_spss(file_name)
 
 #TODO update questions to look at
@@ -62,6 +62,7 @@ df = raw_poll
 ```
 
 ```{r, audience Category,echo=FALSE,results="asis"}
+#TODO update name of audience variable below
 audience_category = "RI_Audience_categories"
 cat(paste("<h5>",audience_category,"</h5>"))
 ```
@@ -70,19 +71,22 @@ cat(paste("<h5>",audience_category,"</h5>"))
 ```{r final plots, echo=FALSE,results="asis", warning=FALSE}
 #This is for regular emotion plots
 
+#Title wrapper function to work with ggplot titles that need \n inserted to wrap
+#ggplot does not autowrap text and we need to insert newlines
 wrapper <- function(x, ...) 
 {
   paste(strwrap(x, ...), collapse = "\n")
 }
 
-#colors
+#colors to set for each audience
 colors = c("Base" = "#54a545", "Opposition" = "#e46c64", "Persuadable" = "#5c8cf3")
 
 
 for (q in emotion_qs){
   
   #Need to work with labels not values so can set as factors and filter out NAs
-  temp = df %>% 
+  temp = df %>%
+    #convert to factor to filter out nas without losing the labels
     mutate_all(as_factor) %>%
     filter(!is.na(df[[q]]))
 
@@ -93,21 +97,24 @@ for (q in emotion_qs){
   #Start the plotting code
   plot = ggplot(data=temp) +
   
-  #use stat prop for percent
-  #set by to let stat prop know what to consider 100%
-  #fill is fill color while color is border
-  aes(y=temp[[q]],fill=temp[[audience_category]],weight=temp$weightcompressed,by=temp[[audience_category]],x=after_stat(prop)) +
-  geom_bar(stat="prop",position="dodge") +
-  #geom_bar(position="dodge") +
+    #use stat prop for percent of audience
+    #set by to let stat prop know what to consider 100%
+    #fill is fill color while color is border
+    aes(y=temp[[q]], fill=temp[[audience_category]], weight=temp$weightcompressed, by=temp[[audience_category]], x=after_stat(prop)) +
   
-  #facet grid separates the audiences in the x
-  facet_grid(~temp[[audience_category]]) +
-  labs(
-    #Just need to get the full message for the title so okay if send df
-    title = wrapper(var_lab(df[[q]]), width = 78),
-    y= 'After reading this message, which of the\nfollowing best describes your feelings?',
-    x = "Percent of Audience Group", family="Open Sans") +
-  theme(axis.text.y = element_text(angle = 0,hjust=1,size=12), plot.title=element_text(size=11), axis.ticks.x = element_blank(), axis.text.x = element_blank(), legend.position = "none") +
+    #Dodging preserves the vertical position of an geom while adjusting the horizontal position
+    geom_bar(stat="prop", position="dodge") +
+  
+    #facet grid separates the audiences in the x
+    facet_grid(~temp[[audience_category]]) +
+    labs(
+      #Just need to get the full message for the title so okay if send df
+      title = wrapper(var_lab(df[[q]]), width = 78),
+      y= 'After reading this message, which of the\nfollowing best describes your feelings?',
+      x = "Percent of Audience Group", family="Open Sans") +
+    
+    #Specify text size/position
+    theme(axis.text.y = element_text(angle = 0,hjust=1,size=12), plot.title=element_text(size=11), axis.ticks.x = element_blank(), axis.text.x = element_blank(), legend.position = "none") +
   scale_x_continuous(labels = scales::percent) +
   
   #geom text is for the % text on the bars
@@ -129,7 +136,7 @@ cat(paste("<h3>",strsplit(var_lab(df[[q]])," E - Selected Choice")[[1]],"</h3>")
 grid.arrange(plot,newpage = TRUE)
 #ggsave(paste(audience_category,"_",q,".png",sep=""))
 
-#Printing out Other emotion text as strings after printing plots
+#Printing out Other (open ended) emotion text as strings after printing plots
 
 # cat("<br><br>")
 # cat("Base Respondents who selected Other wrote in:")

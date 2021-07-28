@@ -90,6 +90,9 @@ Variable label assumptions:
 * Questions such as "Below is a list of names of people/groups. Please indicate your opinion of each, and how strongly you feel that way. If you have never heard of one, or have heard of them but have no opinion, just indicate that." that ask about a variety of people/groups use a " - " separator in between the prompt and the person/groups such as "Below is a list of names of people/groups. Please indicate your opinion of each, and how strongly you feel that way. If you have never heard of one, or have heard of them but have no opinion, just indicate that. - Joe Biden". All of the variable names will start with the same Q#_ such as Q9_1 and Q9_2
 
 
+We have provided a sample Qualtrics data file that follows these assumptions and is used in the following templates as an example.
+[`Test+Poll+for+R+Code_July+19,+2021_17.34.sav`](https://github.com/rethink-media/poll-analysis-template/blob/main/Test%2BPoll%2Bfor%2BR%2BCode_July%2B19%2C%2B2021_17.34.sav)
+
 ## Description of Template Types
 
 ### Import_template.Rmd
