@@ -1,0 +1,564 @@
+---
+title: "Test Poll"
+output:
+  html_document:
+    df_print: paged
+    css: style.css
+
+---
+### July 19, 2021
+### N=1,000 US Adults 
+### Fill in CI
+
+```{r Load packages, include=FALSE}
+#Instructions:
+
+#1. Save as a copy this file so you have reference to this working file on test while you work on changes to it for your new poll
+
+#2. Update the title, date range, CI above
+
+#3. Then review and/or update any code with comments including "TODO"
+
+#4. Note this file must be run on the raw output sav file that's generated from running the Import_template.
+
+library(sjPlot)
+library(tidyverse)
+library(Hmisc)
+library(weights)
+library(descr)
+library(car)
+library(anesrake)
+library(openxlsx)
+library(sjlabelled) #Adding this library to more easily access labels from dataframe columns
+library(haven)
+library(htmlTable)
+library(comprehenr) #For Python like list comprehension
+library(stringi)
+
+#this needs to come after tidyverse, b/c needs to be loaded after haven
+library(expss)
+```
+
+
+```{r User input variables, include=FALSE}
+#User input variables
+
+#TODO fill in new file_name, in .sav format, here  
+file_name = "raw_poll_post_weighting_test.sav"
+
+```
+
+
+```{r Import survey file, include=FALSE}
+#Use haven to import  the sav file specified above
+df = haven::read_spss(file_name)
+
+#Print information about the file
+message("The imported file has ", dim(df)[1], " rows and ", dim(df)[2], " columns")
+```
+
+```{r update cutoff labels, include=FALSE}
+#TODO If some labels on question answers are too long, Qualtrics cuts them off in the data file. Update this code with the full string from the poll text to display properly in generated toplines/crosstabs or delete this chunk if not relevant
+
+#Question # to be updating
+q = "Q98" 
+
+#Text response text to be updating
+#val_lab(df[[q]]) = c("Fill me in: Text Response 1"=1, "Fill me in: Text Response 2" =2, "Fill me in: Text Response 3"=3, "Fill me in: Text Response 4"=4, "Fill me in: Text Response 5"=5)
+var_lab(df[[q]]) = "This question will focus on a hypothetical scenario, and the next question will add additional details. The scenario begins as follows:
+There is a shortage of [Ice Cream/Frozen Yogurt] (i.e. [IC/Froyo]) in the country. There is a proposal to pass legislation to produce more [Ice Cream/Frozen Yogurt]. 
+
+Would you support or oppose this legislation? Please indicate how strongly you feel that way."
+
+#Need to convert back to haven labelled vs. xpss label after resetting the labels
+df[[q]] = haven::labelled(df[[q]],val_lab(df[[q]]),var_lab(df[[q]]))
+
+```
+
+
+```{r read in messages csv, include=FALSE}
+#TODO Update file_name path or remove this chunk if no messages
+#Poll messaging
+#Reading in a table that maps the message text to the message labels
+messages = read_csv("message_codes.csv")
+messages_vec = messages$message
+names(messages_vec) = messages$var_lab
+```
+
+```{r Set expss options, convert labels to expss, echo=FALSE}
+#Set default rounding to whole numbers in expss 
+expss_digits(digits = 0)
+#set table output style console vs html, etc
+expss_output_rnotebook()
+
+#Convert haven labels to expss labels
+#We don't do this earlier b/c magrittr/dplyr subsetting wipes out expss-style labels
+#And write_sav that writes the raw data file needs to use the haven labels and will not work correctly with expss labels
+df = add_labelled_class(df) 
+```
+
+
+
+```{r Create subset dfs of poll questions and crosstab (demographic) questions, echo=FALSE}
+#TODO may need to update order and create a subset of poll_qs if not all Q_ should be printed in toplines (i.e. open response Qs)
+
+#Reordering the columns to print out in desired order using select
+#This is so that when printing out to XL toplines, gender, race, age are leftmost columns
+
+df = df %>%
+  
+  #Updating D_state to state so it won't show up in big crosstab because non D_ are filtered out
+  rename("state" = D_state) %>%
+  
+  #TODO update this select line with question order if needed
+  select(D_Toplines,D_Split,D_Gender,D_Race, D_Age_cond3, D_PID_ind, D_Region, D_Edu_race, Q10, Q20, everything()) #everything() will backfill with all columns not explicitly listed
+
+
+#poll_qs is any columns that start with Q or D_Split or mover_
+poll_qs = df %>% 
+  select(matches("^Q\\d+|mover\\S*|^D_Split$"))%>%
+  #TODO add any questions here that should not show up in the toplines
+  select(-c("Q5", "Q13", "Q14", "Q38_9_TEXT", "Q40_9_TEXT")) #Questions that we don't want to show in toplines like open response, other text
+
+#crosstab_qs is any columns that start with D, including D_Split
+crosstab_qs = df %>% 
+  select(matches("^D_.*"))
+
+
+#Used for styling in tables below as  subtotal tables need additional bolding styling of the subtotal rows
+
+#TODO Update this list with any questions that do not have subtotals
+#Note if subtotals are different than standard grouping of values 1:2, 3:4, there will be code later to adjust
+no_subtotal_qs = c("D_Split","Q10","Q38","Q40", "Q97", "mover_Q10_Q97", "mover_cond_Q10_Q97")
+
+#TODO Update this list with any questions that have split text (i.e. piped text like [Ice Cream/Frozen Yogurt]) that should be displayed as a crosstab column in the toplines
+split_qs = c("Q98","Q100.0")
+split_column = "D_Split_Ice_Cream_FroYo"
+
+```
+
+```{r Functions to generate toplines and crosstabs, echo=FALSE}
+#Helper functions used to create expss tables
+
+create_toplines_subtotals = function(df, column, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4) {
+  #Returns topline table for each df column with counts and valid percent
+  #requires poll_qs (df w/all poll qs) to be pre-defined
+
+  temp = df %>%
+    #specify variables for which statistics will be computed (rows in table)
+    tab_cells(column) %>%
+    #specify statistics to compute (columns)
+    tab_cols(total(label="")) %>%
+    tab_total_row_position("none") %>% # we don't need total
+    tab_weight(df$weightcompressed) %>% #weighting
+    
+    #TODO: If a poll does not have standard ordering of values for subtotal questions, need to adjust the 1:2, 3:4 below
+    # The numbers 1,2,3,4 refer to the values
+    # For example, 1=Very Favorable, 2=Somewhat Favorable, 3=Somewhat Unfavorable, 4=Very Unfavorable
+    tab_subtotal_cells(subtotal_gp1, subtotal_gp2, prefix="Total: ", position = "above", add=FALSE) %>%
+    tab_stat_cpct(total(label="Total"),label = "Percent") %>%
+    tab_stat_cases(total(label="Total"),label = "Count") %>%
+    #finalize table creation
+    tab_pivot(stat_position = "inside_columns")
+  return (temp)
+}  
+
+create_toplines_with_counts = function(df, col) {
+  #Returns topline table for each df column with counts and valid percent
+  #requires poll_qs (df w/all poll qs) to be pre-defined
+  column = df[[col]]
+  subtotals = create_toplines_subtotals(df,column)
+  temp = df %>%
+    #specify variables for which statistics will be computed (rows in table)
+    tab_cells(column) %>%
+    tab_total_row_position("none") %>% # we don't need total
+    tab_weight(df$weightcompressed) %>% #weighting
+    #specify statistics to compute (columns)
+    tab_cols(total(label="")) %>%
+    tab_stat_cpct(total(label="Total"),label = "Percent") %>%
+    tab_stat_cases(total(label="Total"),label = "Count") %>%
+    #finalize table creation
+    tab_pivot(stat_position = "inside_columns") 
+  
+  
+  #Add the subtotals rows
+  temp=temp %>%
+    add_rows(subtotals[1],subtotals[2])
+
+  return (temp)
+}  
+
+create_toplines_with_counts_cro = function(df, column, column2, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4) {
+  #This was used for a crosstab table in the toplines (i.e. a question with a split like China/Russia)
+  #TODO: If a poll does not have standard ordering of values for subtotal questions, need to adjust the 1:2, 3:4 below
+    # The numbers 1,2,3,4 refer to the values
+    # For example, 1=Very Favorable, 2=Somewhat Favorable, 3=Somewhat Unfavorable, 4=Very Unfavorable
+  #Returns cro table output 
+  #requires poll_qs (df w/all poll qs) to be pre-defined
+ 
+  table = cro_cpct(subtotal(df[[column]],subtotal_gp1, subtotal_gp2, prefix="Total: ",position = "bottom"), list(df[[column2]], total(df[[column2]], label="All")), weight=df$weightcompressed, total_label = "Percent", total_statistic = "w_cpct", total_row_position = "none")
+  table[is.na(table)] = 0
+  
+  return (table)
+}  
+
+#Same function as above but does not calculate subtotals
+create_toplines_with_counts_no_subtotals = function(df, col) {
+  #Returns topline table for each df column with counts and valid percent
+  #requires poll_qs (df w/all poll qs) to be pre-defined
+  column = df[[col]]
+  
+  df %>%
+    #specify variables for which statistics will be computed (rows in table)
+    tab_cells(column) %>%
+    tab_total_row_position("none") %>% # we don't need total cases row
+    tab_weight(df$weightcompressed) %>% #weighting
+    #specify statistics to compute (columns)
+    tab_cols(total(label="")) %>%
+    #The total labels below are the #Total Cases label
+    tab_stat_cpct(total(label="<i>Total Responses</i>"),label = "Percent") %>%
+    tab_stat_cases(total(label="<i>Total Responses</i>"),label = "Count") %>%
+    #finalize table creation
+    tab_pivot(stat_position = "inside_columns")
+} 
+
+
+create_crosstab = function(column) {
+  #Returns crosstab table with a column for each crosstab variable in the crosstab_qs df
+  #requires crosstab_qs (df w/all crosstab qs) to be pre-defined
+  
+  #Checking if column requires a subtotal or not
+  if (column %in% no_subtotal_qs){
+    output=cro_cpct(df[[column]], crosstab_qs,
+                   weight=df$weightcompressed, 
+                   total_row_position = "none")
+  }
+  #else subtotal
+  else{
+    #Add bool is for whether subtotals should be added in addition to orig values or replace orig values
+    add_bool=FALSE #Change this to TRUE if you want subtotals added in addition to original values
+    
+    #TODO: If a poll does not have standard ordering of values for subtotal questions, need to adjust the 1:2, 3:4 below
+    subtotal_gp1 = 1:2
+    subtotal_gp2 = 3:4
+    
+    output=cro_cpct(subtotal(df[[column]], subtotal_gp1, subtotal_gp2, prefix="Total: ",position = "top",add=add_bool), crosstab_qs,
+                   weight=df$weightcompressed, 
+                   total_row_position = "none")
+    if (!add_bool){
+      output = output[1:2] #only return 1st two rows to see just the subtotal rows
+    }
+ 
+  }
+  
+  return (output)
+}
+
+create_crosstab_no_subtotals = function(column) {
+  #Returns crosstab table with a column for each crosstab variable in the crosstab_qs df
+  #requires crosstab_qs (df w/all crosstab qs) to be pre-defined
+  #Will not display any subtotals in the crosstab output
+  
+    output=cro_cpct(df[[column]], crosstab_qs,
+                   weight=df$weightcompressed, 
+                   total_row_position = "none")
+    return (output)
+  }
+
+
+generate_crosstab_tables = function(poll_df) { 
+  #Returns list of crosstab tables
+  crosstab_tables = lapply(poll_df,create_crosstab)
+  crosstab_tables
+}
+
+
+concatenate_crosstabs = function(crosstab_tables) {
+  # Concatenates all of the crosstab tables together row-wise and returns one big crosstab table
+  big_crosstab = NULL
+  for (table in crosstab_tables) {
+    big_crosstab = add_rows(big_crosstab, table)
+  }
+  #Setting empty cells to 0
+  big_crosstab[is.na(big_crosstab)] = 0
+  big_crosstab
+}  
+
+
+table_to_excel = function (wb, table_to_export, output_filename,nrow_list, sheet_name) {
+  #function to write tables or dataframes to excel
+  # table or list of tables > xlsx doc
+  sh = addWorksheet(wb, sheet_name)
+  
+  #mainformat center aligns the cells
+  xl_write(table_to_export, wb, sh,main_format = openxlsx::createStyle(halign = "center", numFmt = format(0, nsmall =
+get_expss_digits()),wrapText=TRUE))
+  
+  #Merging cells in the XL wb object
+  beg_row=3
+  end_row=3
+  headerStyle <- createStyle(wrapText = TRUE)
+  for (i in nrow_list){
+    #Set end row to the beginning row plus the value from the list, which is the # of rows of the table
+    end_row=beg_row + i -1 #Need to -1 since the beg_row and end_row both count as part of the table
+    mergeCells(wb,sheet_name,cols=1, rows=beg_row:end_row)
+    
+    ## create and add a style to the column headers
+    addStyle(wb, sheet = sheet_name, headerStyle, rows = beg_row:end_row, cols = 1)
+    
+    #Now reset beg_row to be end_row +1 for next loop
+    beg_row = end_row + 1
+  }
+  
+  
+  saveWorkbook(wb, paste( output_filename, ".xlsx", sep = ""), overwrite = TRUE)
+}
+
+```
+
+```{r Generate crosstab excel file and export, echo=FALSE}
+#This code shouldn't change from poll to poll
+#Repeating steps twice, once to create the full crosstabs table, and once to create a crosstabs table with only the subtotals listed (for qs that have subtotals) 
+
+#generate crosstabs
+crosstab_tables = lapply(names(poll_qs), create_crosstab)
+crosstab_tables_no_subtotals = lapply(names(poll_qs), create_crosstab_no_subtotals)
+
+#concatenate crosstabs row-wise
+big_crosstab = concatenate_crosstabs(crosstab_tables)
+big_crosstab_no_subtotals = concatenate_crosstabs(crosstab_tables_no_subtotals)
+
+#List of num_rows in all of the crosstab_tables
+nrow_list = to_list(for (table in crosstab_tables) nrow(table))
+nrow_list_no_subtotals = to_list(for (table in crosstab_tables_no_subtotals) nrow(table))
+
+#export big crosstab table to excel
+wb = createWorkbook()
+table_to_excel(wb, big_crosstab, "big_crosstab_export",nrow_list, "Subtotals")
+table_to_excel(wb, big_crosstab_no_subtotals, "big_crosstab_export",nrow_list_no_subtotals, "No Subtotals")
+
+```
+
+```{r helper functions, echo=FALSE}
+#TODO : The bolding of subtotal values is done by specifying matrix coordinates of where to bold
+#If a question contains more responses than the standard 5: Very Supportive, Somewhat Supportive, Somewhat UnSupportive, Very Unsupportive, Not sure -> May need to use a different function below or define a new one
+
+#Message helper functions to apply any message strings that didn't come in from Qualtrics
+get_column_message = function (col_vec) {
+  #Getting the short message label like Preparation
+  message_label = var_lab(col_vec)
+  
+  #Splitting the short message label to remove the Emotion appending of E - Selected Choice
+  message_label = strsplit(message_label," E - Selected Choice")[[1]]
+  
+  message_text = ""
+  if (message_label %in% names(messages_vec)){
+   message_text = messages_vec[[message_label]] 
+  }
+  return (message_text)
+}
+
+update_columns_with_message_text = function(df,col){
+  message_text = get_column_message(df[[col]])
+  #Splitting the short message label to remove the Emotion appending of E - Selected Choice
+  message_label = var_lab(df[[col]])
+  message_label = strsplit(message_label," E - Selected Choice")[[1]]
+  
+  #Check if message_text is empty, if so, don't append the text and ":"
+  if (message_text!=""){
+   var_lab(df[[col]]) = paste("<b>",message_label,":</b>",message_text) 
+  }
+  else{
+    var_lab(df[[col]]) = paste("<b>",message_label,"</b>")
+  }
+  return (df)
+}
+
+#Here is a function that can be used to update a table's css styling
+#Note that this expects a standard table of the first 5 rows are regular
+#the last two are subtotals
+#Like - 1= Strongly support, 2= Somewhat support, 3 = Somewhat oppose, 4 = Strongly oppose, 5 = Not sure
+update_table_styling = function(df,caption, num_rows=7){
+  #num_rows should be the number of rows+subtotal rows in the table
+  #where contains the position of where the styling will take effect
+  #Note that where starts at index 0
+  where = rbind(c(num_rows-2,1),c(num_rows-1,1),c(num_rows-1,2),c(num_rows-1,3),c(num_rows,2),c(num_rows,3))
+  style = c("font-weight: bold;")
+  css.cell = matrix("",nrow(df),ncol(df))
+  css.cell[where] = style
+  return (htmlTable(df,css.cell=css.cell,caption=caption,align="lcc"))
+}
+
+
+#This expects a matrix question with many 7 rows (5 + 2 subtotals) and 4 columns
+#Such as Columns for labels, ice cream, froyo, all VS standard table above is just labels, count, percent
+update_table_styling_4cols = function(df,caption, num_rows=7){
+  #where contains the position of where the styling will take effect
+  #Note that where starts at index 0
+  where = rbind(c(num_rows-2,1),c(num_rows-1,1),c(num_rows-1,2),c(num_rows-1,3),c(num_rows,2),c(num_rows,3),c(num_rows-1,4),c(num_rows,4))
+  style = c("font-weight: bold;")
+  css.cell = matrix("",nrow(df),ncol(df))
+  css.cell[where] = style
+  return (htmlTable(df,css.cell=css.cell,caption=caption,align="lccc"))
+}
+
+#Could use for questions like
+#Like 1 = Very Favorable, 2=Somewhat Favorable, 3=somewhat unfavorable, 4=very unfavorable, 5 heard of/no opinion, 6 never heard of
+#Or like -  1= Close Ally, 2= Ally but not a close one, 3=neither an ally nor an enemy, 4=unfriendly not an enemy, 5=enemy, 6=heard of, no opinion, 7=never heard of
+
+update_table_styling_big_matrix = function(df, num_rows=8){
+  #num_rows is number of rows in table including subtotal rows. For favorability, would be 8
+  
+  #Iterate through every row in the dataframe
+  num_tables=nrow(df)/num_rows
+  
+  #Use same css.cell
+  css.cell = matrix("",nrow(df),ncol(df))
+  for (x in 1:num_tables){
+    #Note that where starts at index 0
+    where = rbind(c(num_rows-2+num_rows*(x-1),1),c(num_rows-1+num_rows*(x-1),1),c(num_rows-1+num_rows*(x-1),2),c(num_rows-1+num_rows*(x-1),3),c(num_rows*x,2),c(num_rows*x,3))
+    style = c("font-weight: bold;")
+    css.cell[where] = style
+  }
+  return (htmlTable(df,css.cell=css.cell,align="lccc"))
+}
+
+```
+
+```{r Matrix, echo=FALSE, results="asis"}
+#TODO May want to update what actually appears in the table outputs
+#i.e. remove percent and/or counts, show total row or not, show subtotals or not
+
+#This is for updating the dataframe variable labels to not contain the question for multiple choice
+# Specifically, it's removing the Below is a list of names of people and groups. Please indicate your opinion of each, and how strongly you feel that way. If you have never heard of one, or have heard of them but have no opinion, just indicate that.
+#To just show the Joe Biden, Kamala Harris, etc...
+update_df_matrix = function(col_string,df){
+  mylist=names(df)
+  mylist=mylist[startsWith(mylist,col_string)]
+  for (i in mylist){
+    #Split the label by the "-" mark to get the person this is talking about
+    set_label(df[[i]]) = strsplit(get_label(df[[i]])," - ")[[1]][2]
+  }
+  return (df)
+}
+
+#Matrix questions = Rate favorability of Trump, Biden, etc
+
+create_toplines_with_counts_matrix = function(col_string, df, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4) {
+  #Returns topline table for each df column with counts and valid percent
+  #requires poll_qs (df w/all poll qs) to be pre-defined
+  # column > table
+  #Given the column name, identify the title of the question without the value label
+  caption = strsplit(get_label(df[[paste(col_string,"1",sep="")]])," - ")[[1]][1]
+  
+  #Use function above to update the labels of the dataframe to remove the question
+  temp = update_df_matrix(col_string,df)
+
+  #getting all of the variable names that start with the col_string
+  mylist=names(temp)
+  mylist=mylist[startsWith(mylist,col_string)]
+  
+  #Need to add the actual columns to cells list for tab_cells to work
+  cells=to_list(for (i in mylist) temp[[i]])
+  
+  #Start creating the table
+  temp=temp %>%
+
+    tab_cells("|" = cells) %>%
+    tab_total_row_position("none") %>% # we don't need total cases row
+    tab_weight(df$weightcompressed) %>% #weighting
+    
+    #specify statistics to compute (columns) vs tab_rows
+    tab_cols(total( label = "")) %>%
+    
+    tab_subtotal_cells(subtotal_gp1, subtotal_gp2, prefix="Total: ",position = "bottom",add=TRUE) %>%
+    
+    #Values to show in the columns
+    tab_stat_cpct(total(label=""),label = "Percent") %>%
+    tab_stat_cases(total(label=""),label = "Count") %>%
+    
+    tab_sort_desc() %>%
+    #finalize table creation
+    tab_pivot(stat_position = "inside_columns") %>%
+    set_caption(paste("<br><br>",caption))
+  
+  return (temp)
+}
+
+```
+
+```{r topline table outputs, results="asis",  echo=FALSE}
+#TODO Update lists below with matrix_qs
+
+#i.e. may need to arrange the code below and the following code block in different orders depending on what type of styling questions require and what order they appear in the survey/output file
+
+#matrix_qs should be all Q#_1/2/3/etc
+matrix_qs = c("Q9_1",  "Q9_3", "Q9_5", "Q9_9")
+
+#matrix_q is just the single matrix q _
+matrix_q = "Q9_"
+
+#TODO update the values passed into the subtotal groups if you'd like to see different values grouped together
+table= create_toplines_with_counts_matrix(matrix_q,df, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4)
+styled_table = update_table_styling_big_matrix(table, num_rows = 8)
+print(styled_table)
+
+
+
+```
+
+
+```{r table output helper functions, echo=FALSE, include=FALSE}
+#Note that this display function returns a standard table that may include subtotals if relevant and contains count/percent for total respondents
+#The functions may need to be updated if you want to return a crosstab instead of Question with Audience or Question with Country/Split
+
+display_table = function(col,df){
+  #Function that takes in a question and returns a table
+  #TODO if you don't have a messages csv, remove the line below and set temp to df
+  temp = update_columns_with_message_text(df,col) 
+  
+  if (q %in% no_subtotal_qs){
+    topline_table = create_toplines_with_counts_no_subtotals(temp,col)
+  }
+  else if (q %in% split_qs){
+    topline_table = create_toplines_with_counts_cro(temp, col, split_column)
+    }
+  else{
+    topline_table = create_toplines_with_counts(temp,col)
+  }
+  
+  table_output = addHtmlTableStyle( x=topline_table, css.rgroup = c("font-weight:normal"), css.cell = c("width: 500px", rep("width: 75px", ncol(topline_table) - 1)))
+   
+   return(table_output)
+}
+
+```
+
+
+```{r, results="asis", echo=FALSE}
+#Question ordered defined in code block earlier in notebook using select
+
+#Loop through all questions except open response ones
+#Should already be in order due to select code above
+
+for (q in names(poll_qs)){
+  
+  if (q != "D_Split"){
+    
+    table=display_table(q,df)
+  
+    if (q %in% no_subtotal_qs){
+      print(htmlTable(table, caption = paste("<br><br>"), total = FALSE, align="c"))
+    }
+    else if (q %in% matrix_qs){
+      #Do nothing since printed in block above
+    }
+    
+    else{
+      print(update_table_styling(table,caption=paste("<br><br>")))
+    }
+  }
+}
+
+```
+

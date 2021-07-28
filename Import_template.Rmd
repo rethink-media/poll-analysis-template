@@ -1,0 +1,998 @@
+---
+title: "Data cleaning, recoding, weighting, audience labeling notebook"
+output:
+  html_document:
+    css: style.css
+---
+
+```{r Load packages, include=FALSE}
+#Instructions:
+
+#1.Save as a copy this file so you have reference to this working file on test while you work on changes to it for your new poll
+#2. Update any code with comments including "TODO"
+#3. Then run this file to produce a weighted, recoded, and audience labelled file that can be used to generate toplines & crosstabs in the other template notebooks
+
+library(sjPlot)
+library(tidyverse)
+library(Hmisc)
+library(weights)
+library(descr)
+library(car)
+library(anesrake)
+library(openxlsx)
+library(sjlabelled) #Adding this library to more easily access labels from dataframe columns
+library(haven)
+library(htmlTable)
+library(comprehenr) #For Python like list comprehension
+library(stringi)
+
+#this needs to come after tidyverse, b/c needs to be loaded after haven
+library(expss)
+```
+
+
+```{r User input variables, include=FALSE}
+#User input variables
+
+file_name = "Test+Poll+for+R+Code_July+19,+2021_17.34.sav"
+
+desired_total_responses = 375
+
+weighted = TRUE
+
+# Likely want to rename the Qualtrics D_Region that contains states to D_state to later use D_Region for regions like SouthWest
+# May want to rename Qualtrics Split columns to contain a D_ to show up in crosstabs that filter to only columns that start with D_ if there was a split in the column
+#Columns to rename on read in
+columns_to_rename = c("D_state"="D_Region", "D_Split_Ice_Cream_FroYo_2"="Split_Ice_Cream_FroYo_2", "D_Split_Ice_Cream_FroYo" = "Split_Ice_Cream_FroYo", "D_Split" = "Split")
+```
+
+
+```{r Import survey file, include=FALSE}
+#Use haven to import  the sav file specified above
+haven_file = haven::read_spss(file_name)
+
+#Print information about the file
+message("The imported file has ", dim(haven_file)[1], " rows and ", dim(haven_file)[2], " columns")
+```
+
+
+```{r Filter out unneeded data/columns, include=FALSE}
+#Nothing here needs to be changed for new polls
+
+df = haven_file %>%
+  
+  #subset to filter for only gc responses (filter() doesn't work w/labeled data)
+  #gc is good candidate / i.e. finished whole survey
+  
+  subset(subset = gc == 1) %>%
+  
+  #create Toplines column for use in crosstabs and label it Total
+  mutate(D_Toplines = "Total") %>%
+  
+  rename(all_of(columns_to_rename)) %>%
+  
+  #Only keep column names that contain Q + number, or D_, and does not follow the pattern of Speed check/timing questions (Q,digit,_,non-digit)
+  #Any column names we want to keep without this pattern should be renamed in the above line
+  dplyr::select(matches("(Q\\d+)|(D_)"), -matches("Q\\d+\\_\\D")) 
+
+
+#get number of rows
+total_responses = dim(df)[1]
+total_columns = dim(df)[2]
+
+#Compute compression coefficient which is used in the weighting
+compression_coeff = desired_total_responses / total_responses
+
+#Print information about the filtered file
+message("The file has ", total_responses , " complete responses and ", total_columns," relevant columns")
+print("The column names are:")
+print(names(df))
+
+```
+
+```{r rename varlabels, include=FALSE}
+#Note this entire R code block can be removed if respondents all saw the same text in questions, even if they didn't all see the same questions.
+#TODO if respondents saw different text in the same questions based on splits, update the code below with the correct strings.
+#EX Question of this: This question will focus on a hypothetical scenario, and the next question will add additional details. The scenario begins as follows:
+#There is a shortage of [Field-Split%20Ice%20Cream%2FFroYo] (i.e. [Field-Split%20Ice%20Cream%2FFroYo%202]) in the country. There is a proposal to pass legislation to produce more [Field-Split%20Ice%20Cream%2FFroYo]. 
+
+#TODO update this vector with the list of all questions from the poll that displayed different text based on splits
+split_qs = c("Q98","Q100.0")
+
+#Updating the string labels
+for (col in split_qs){
+  label = var_lab(df[[col]])
+  
+  #TODO update these string replacements based on how Qualtrics coded the splits into the provided labels and what they referred to
+  #You can identify this syntax by printing out the var_lab(df[[q]]) where q is one of split_qs. The words to fill in are from the D_Split column
+  label = stri_replace_all_fixed(label, '[Field-Split%20Ice%20Cream%2FFroYo]',"[Ice Cream/Frozen Yogurt]")
+  label = stri_replace_all_fixed(label, "[Field-Split%20Ice%20Cream%2FFroYo%202]","[IC/Froyo]")
+
+  var_lab(df[[col]]) = label
+}
+
+#TODO update this string of the split text variable label that will show up at the top of a topline or crosstab table with this split label text as column labels
+#Renaming the split label
+var_lab(df$D_Split) = "Frozen Treat"
+
+```
+
+
+``` {r recode race function, echo=FALSE}
+# A function to recode demographic data
+#Note this recoding is slightly different and just uses the expected value numbers vs. looking for a string match on the value labels
+#It will generate a warning if the value labels do not match the expected labels
+
+recode_race <- function(df) {
+#Standard polls have the following label/value pairs for race
+  #1 - Hispanic/Latinx
+  #2 Middle Eastern/North African
+  #3 Black/African American
+  #4 White
+  #5 Asian American/Pacific Islander
+  #6 Native American/Indigenous
+  #7 Other/Mixed Race
+  
+#Double check labels and throw a warning if not as expected
+race_labels = get_labels(df$D_Race,values=TRUE)
+
+if (race_labels[1] != "Hispanic/Latinx (of any race)"){
+  stop("Race labels not as expected")
+}
+if(race_labels[2]!="Middle Eastern/North African (of any race)"){
+  stop("Race labels not as expected")
+}
+if(race_labels[3]!="Black/African American"){
+  stop("Race labels not as expected")
+}
+if(race_labels[4]!="White (not Hispanic/Latinx or Middle Eastern/North African)"){
+  stop("Race labels not as expected")
+}
+if(race_labels[5]!="Asian American/Pacific Islander"){
+  stop("Race labels not as expected")
+}
+if(race_labels[6]!="Native American/Indigenous (Alaska or Hawaii Native, etc.)"){
+  stop("Race labels not as expected")
+}
+if(race_labels[7]!="Other/Mixed Race"){
+  stop("Race labels not as expected")
+}
+  
+ 
+#Using manual recoding using values defined above
+#Not using the conditions above to look for the label
+recoding = expss::recode(df$D_Race,"Hispanic/Latinx (of any race)" = 1~1, "Black/African American" = 3 ~ 2, "White (not Hispanic/Latinx or Middle Eastern/North African)" = 4 ~ 3, "Asian American/Pacific Islander" = 5 ~ 4, "Other/Mixed Race" = other ~ 5, with_labels = TRUE)
+  
+df$D_Race = recoding
+#Applying haven labelled class to recoding otherwise will be expss labels
+df$D_Race=haven::labelled(df$D_Race,val_lab(df$D_Race),var_lab(df$D_Race))
+  
+#The recoding for binary
+#Uses the indices we just recoded above (i.e. white is 3)
+#any values not listed to be recoded fall into other
+binary <- expss::recode(df$D_Race, "White" = 3 ~ 1, "POC" = other ~ 2, with_labels = TRUE)
+
+df$D_Race_binary = binary
+#Applying haven labelled class to recoding otherwise will be expss labels
+df$D_Race_binary=haven::labelled(df$D_Race_binary,val_lab(df$D_Race_binary),var_lab(df$D_Race_binary))
+
+  
+return( df)
+  
+}
+```
+
+```{r recode party function, echo=FALSE}
+# A function to recode party/PID data
+
+recode_party <- function(df) {
+
+  #Confirm that this column contains party
+  col_label <- get_label(df$D_PID)
+  contains_race <- str_detect(col_label,"identify politically")
+  
+  #Statement to catch if the column label did not contain race/ethnicity
+  if (!contains_race){
+    stop("Column label does not contain identify politically")
+  }
+  
+  #Gets the labels (i.e. Strong Democrat) of the column and returns them in an atomic vector with the values (i.e. Strong Democrat 1,)
+  orig_labels <- get_labels(df$D_PID,values=TRUE)
+  
+  #These are the expected races to encode into the Other/Mixed Race Group
+  dem_indices <- c()
+  rep_indices <- c()
+  ind_indices <- c()
+  
+  #Iterate through the labels to change if needed
+  #names object returns values of the labels
+  for (index in names(orig_labels)) {
+    
+    #Finding the string for this index in the labels
+    party_string=orig_labels[index]
+    
+    #Getting booleans for parties
+    is_dem <- str_detect(party_string,"Democrat")
+    is_rep <- str_detect(party_string,"Republican")
+    is_ind <- str_detect(party_string,"Independent")
+    
+    #First catch any indices that have "Independent"
+    if (is_ind){
+      ind_indices <- append(ind_indices,index)
+    }
+    
+    #Getting the democrat indices
+    if (is_dem){
+      dem_indices <- append(dem_indices,index)
+    }
+    
+    #Getting the republican indices
+    else if (is_rep){
+      rep_indices <- append(rep_indices,index)
+    }
+    else {
+      #This will catch the independent index that's not leaning any direction
+      ind_index <- index
+    }
+  }                                           
+
+#Regular party recoding
+party <- expss::recode(df$D_PID, 'Democrat' = dem_indices ~ 1, 'Republican' = rep_indices ~ 2, "Independent" = ind_index ~ 3, with_labels = TRUE) 
+  
+#The recoding for indep including leaning
+#Recode documentation states that recoding will apply to leftmost vars first and once recoded they are not recoded again if match with others
+
+  ind <- expss::recode(df$D_PID, "Independent" = ind_indices ~ 3, 'Democrat' = dem_indices ~ 1, 'Republican' = rep_indices ~ 2, with_labels = TRUE) 
+
+  df$D_PID_party = party
+  df$D_PID_ind = ind
+  
+  #Appending text to label to indicate where leaning folks included
+  var_lab(df$D_PID_party) = paste(var_lab(df$D_PID_party),"Democrat/Republican includes Independent but leaning Democrat/Republican.")
+  var_lab(df$D_PID_ind) = paste(var_lab(df$D_PID_ind),"Independent includes Independent but leaning Democrat/Republican.")
+  
+#Applying haven labelled class to recoding otherwise will be expss labels
+df$D_PID_party=haven::labelled(df$D_PID_party,val_lab(df$D_PID_party),var_lab(df$D_PID_party))
+df$D_PID_ind=haven::labelled(df$D_PID_ind,val_lab(df$D_PID_ind),var_lab(df$D_PID_ind))
+  
+return( df)
+  
+}
+
+```
+
+``` {r recode age, echo=FALSE}
+# A function to recode age data
+
+recode_age <- function(df) {
+
+  #Confirm that this column contains party
+  col_label <- get_label(df$D_Age)
+  contains_age <- str_detect(col_label,"age range")
+  
+  #Statement to catch if the column label did not contain race/ethnicity
+  if (!contains_age){
+    stop("Column label does not contain age range")
+  }
+  
+  #Gets the labels (i.e. Strong Democrat) of the column and returns them in an atomic vector with the values (i.e. Strong Democrat 1,)
+  orig_labels <- get_labels(df$D_Age,values=TRUE)
+  
+  #These are the expected races to encode into the Other/Mixed Race Group
+  g1_indices = c() #for group 1: 18-24
+  g2_indices = c() #for group 2: 25-29
+  g3_indices = c() #for group 3: 30-39
+  g4_indices = c() #for group 4: 40-49
+  g4_2 = 5 #setting default index for group age 40-44 treated separately from g4 in cond2
+  g5_indices = c() #for group 5: 50-64
+  g6_indices = c() #for group 6: 65+
+  
+  #Iterate through the labels to change if needed
+  #names object returns values of the labels
+  for (index in names(orig_labels)) {
+    
+    #Finding the string for this index in the labels
+    age_string=orig_labels[index]
+    
+    if (age_string=="18-24"){
+      g1_indices=append(g1_indices,index)
+    }
+    else if (age_string=="25-29"){
+      g2_indices=append(g2_indices,index)
+    }
+    else if (age_string=="30-34"){
+      g3_indices=append(g3_indices,index)
+    }
+    else if (age_string=="35-39"){
+      g3_indices=append(g3_indices,index)
+    }
+    else if (age_string=="40-44"){
+      g4_indices=append(g4_indices,index)
+      g4_2 = index
+    }
+    else if (age_string=="45-49"){
+      g4_indices=append(g4_indices,index)
+    }
+    else if (age_string=="50-54"){
+      g5_indices=append(g5_indices,index)
+    }
+    else if (age_string=="55-59"){
+      g5_indices=append(g5_indices,index)
+    }
+    else if (age_string=='60-64'){
+      g5_indices=append(g5_indices,index)
+    }
+    #If made it here, should be 65+
+    else{
+      g6_indices=append(g6_indices,index)
+    }
+  }                                           
+
+#Regular recoding
+age_cond <- expss::recode(df$D_Age, '18-24' = g1_indices ~ 1, '25-29' = g2_indices ~ 2, "30-39" = g3_indices ~ 3, '40-49' = g4_indices ~ 4, '50-64' = g5_indices ~ 5, '65+' = g6_indices ~ 6, with_labels = TRUE) 
+
+#df$D_Age_cond = age_cond
+
+#Need with_labels set to TRUE to carry over question label
+age_cond2 <- expss::recode(df$D_Age, '18-29' = c(g1_indices,g2_indices) ~ 1, "30-44" = c(g3_indices,g4_2) ~ 2, '45+' = other ~ 3, with_labels = TRUE) 
+
+#df$D_Age_cond2 = age_cond2
+
+#Need with_labels set to TRUE to carry over question label
+age_cond3 <- expss::recode(df$D_Age, '18-29' = c(g1_indices,g2_indices) ~ 1, "30-44" = c(g3_indices,g4_2) ~ 2, '45-64' = c(g4_indices,g5_indices) ~ 3, "65+" = other ~ 4, with_labels = TRUE) 
+
+df$D_Age_cond3 = age_cond3
+
+
+return( df)
+}
+```
+
+```{r recode Education, echo=FALSE}
+# A function to recode edu data
+
+recode_edu <- function(df) {
+
+  #Confirm that this column contains party
+  col_label <- get_label(df$D_Edu)
+  contains_edu <- str_detect(col_label,"schooling")
+  
+  #Statement to catch if the column label did not contain race/ethnicity
+  if (!contains_edu){
+    stop("Column label does not contain schooling")
+  }
+  
+  #Gets the labels (i.e. Strong Democrat) of the column and returns them in an atomic vector with the values (i.e. Strong Democrat 1,)
+  orig_labels <- get_labels(df$D_Edu,values=TRUE)
+  
+  g1_indices = c() #for group 1: Non-college
+  g2_indices = c() #for group 2: College+
+  
+  #Iterate through the labels to change if needed
+  #names object returns values of the labels
+  for (index in names(orig_labels)) {
+    #print(index)
+    
+    #Finding the string for this index in the labels
+    edu_string=orig_labels[index]
+    
+    if (edu_string=="4-year college graduate/Bachelors' degree"){
+      g2_indices=append(g2_indices,as.integer(index))
+    }
+    else if (edu_string=="Postgraduate degree or higher" ){
+      g2_indices=append(g2_indices,as.integer(index))
+    }
+    else {
+      g1_indices=append(g1_indices,as.integer(index))
+    }
+    
+  }                                           
+
+#Regular recoding
+edu_cond = expss::recode(df$D_Edu, "No college" = g1_indices ~ 1, "College" = g2_indices ~ 2, with_labels = TRUE) 
+df$D_Edu_cond = edu_cond
+
+#Updating to haven labels from expss labels
+df$D_Edu_cond = haven::labelled(df$D_Edu_cond,val_lab(df$D_Edu_cond),var_lab(df$D_Edu_cond))
+
+return(df)
+}
+```
+
+```{r recode ideology, echo=FALSE}
+# A function to recode ideo data
+
+recode_ideo <- function(df) {
+#Standard Ideology values are:
+  #One (1) is very liberal/left. Four (4) is moderate/centrist. Seven (7) is very conservative/right.
+
+#Regular recoding
+ideo_cond = expss::recode(df$D_Ideo_1, "Liberal" = c(1,2,3) ~ 1, "Moderate" = 4 ~ 2, "Conservative" = c(5,6,7) ~ 3, with_labels = TRUE) 
+df$D_Ideo_cond = ideo_cond
+
+#This doesn't have labels for the values but we'll double check how the question is worded
+if (var_lab(df$D_Ideo_1)!="On a scale of one (1) to seven (7), how would you rate your political ideology?One (1) is very liberal/left. Four (4) is moderate/centrist. Seven (7) is very conservative/right. - Rate"){
+  stop("D_Ideo label is not as expected")
+}
+
+return(df)
+}
+```
+
+```{r recode region, echo=FALSE}
+#Recode region to 
+recode_region <- function(df) {
+
+  #Confirm that this column contains party
+  col_label <- get_label(df$D_state) 
+  pattern = coll("In which state do you currently live?")
+  
+  #Statement to catch if the column label did not contain race/ethnicity
+  if (!str_detect(col_label,pattern)){
+    stop("In which state do you currently live? is not detected")
+  }
+  
+  #Gets the labels 
+  orig_labels <- get_labels(df$D_state,values=TRUE)
+  
+  sc_indices = c() #for group 1: South Central
+  sa_indices = c() #for group 2: South Atlantic
+  mw_indices = c() #for group 3: Midwest
+  w_indices = c() #for group 4: West
+  #NE indices will be others
+  
+  sa_states = c("Delaware", "District of Columbia", "Florida", "Georgia", "Maryland", "North Carolina", "South Carolina", "Virginia", "West Virginia")
+  sc_states = c("Alabama", "Arkansas", "Kentucky", "Louisiana", "Mississippi", "Oklahoma", "Tennessee", "Texas")
+  mw_states = c("Illinois","Indiana","Iowa","Kansas","Michigan","Minnesota","Missouri","Nebraska","North Dakota","Ohio","South Dakota","Wisconsin")
+  w_states = c("Alaska","Arizona","California","Colorado","Hawaii","Idaho","Montana","Nevada","New Mexico","Oregon","Utah","Washington","Wyoming")
+  #NE states will be other
+  
+  #Iterate through the labels to change if needed
+  #names object returns values of the labels
+  for (index in names(orig_labels)) {
+    #print(index)
+    
+    #Finding the string for this index in the labels
+    #This will be a state
+    state_string=orig_labels[index]
+    
+    if (state_string %in% sa_states){
+      sa_indices=append(sa_indices,as.integer(index))
+    }
+    else if (state_string %in% sc_states ){
+      sc_indices=append(sc_indices,as.integer(index))
+    }
+    else if (state_string %in% mw_states){
+      mw_indices=append(mw_indices,as.integer(index))
+    }
+    else if (state_string %in% w_states){
+      w_indices=append(w_indices,as.integer(index))
+    }
+  }   
+#Recoding a new field 1 will be South Atlantic, 2 will be South Central
+region = expss::recode(df$D_state, "South Atlantic" = sa_indices ~ 1, "South Central" = sc_indices ~ 2, "Midwest" = mw_indices ~ 3, "West" = w_indices ~ 4, "Northeast" = other ~ 5,  with_labels = FALSE)
+df$D_Region = region
+
+#Updating the question
+var_lab(df$D_Region)="In what region do you live?"
+
+#Updating to haven labels from expss labels
+df$D_Region = haven::labelled(df$D_Region,val_lab(df$D_Region),var_lab(df$D_Region))
+
+
+return(df)
+}
+```
+
+
+```{r EDU/RACE Variable, echo=FALSE}
+#Creating a new column/variable to represent whether someone is white edu, white nonedu, or other
+# 1 will be white non college
+# 2 will be white college
+# 3 will be not white
+recode_race_edu = function(df){
+  
+df$D_Edu_race = df$D_Race_binary
+
+#Set rows where not white equal to 3 
+df$D_Edu_race[df$D_Race_binary==2] = 3
+
+#Set white and no college
+df$D_Edu_race[df$D_Race_binary==1 & df$D_Edu_cond==1] = 1
+
+#Set white and college to 2
+df$D_Edu_race[df$D_Race_binary==1 & df$D_Edu_cond==2] = 2
+
+# #Adding labels
+var_lab(df$D_Edu_race) = "Education/Race"
+
+#Recode to include labels
+race_edu = expss::recode(df$D_Edu_race, "White No College" = 1 ~ 1, "White College" = 2~ 2, "POC" = 3 ~ 3, with_labels = TRUE) 
+df$D_Edu_race = race_edu
+
+
+return (df)
+}
+```
+
+```{r recode religion, echo=FALSE}
+# A function to recode religion data
+
+#Expected
+# 1 Evangelical/Born-again Protestant
+#     2               Mainline Protestant
+#     3                          Catholic
+#    4                        Mormon/LDS
+#   5                   Other Christian
+#     6                            Jewish
+#     7                            Muslim
+#     8                             Hindu
+#     9                          Buddhist
+#    10               Other non-Christian
+#    11        None/Nothing in particular
+#    12                          Agnostic
+#    13                           Atheist
+
+recode_religion <- function(df) {
+
+#Regular recoding
+religion_cond = expss::recode(df$D_Religion, "Christian" = c(1,2,3,4,5) ~ 1, "Muslim" = 7 ~ 2, "Religiously Unaffiliated" = c(11,12,13) ~ 3, "Other" = other ~ 4, with_labels = TRUE) 
+
+df$D_Religion_cond = religion_cond
+
+#Throwing a warning if some of the expected labels are not as we expect
+religion_labels = get_labels(haven_file$D_Religion,values=TRUE)
+
+if (religion_labels[1]!= "Evangelical/Born-again Protestant" ){
+  stop("Religion labels not coded as expected")
+}
+if (religion_labels[2]!= "Mainline Protestant" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[3]!= "Catholic" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[4]!= "Mormon/LDS" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[5]!= "Other Christian" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[6]!= "Jewish" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[7]!= "Muslim" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[8]!= "Hindu" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[9]!= "Buddhist" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[10]!= "Other non-Christian" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[11]!= "None/Nothing in particular" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[12]!= "Agnostic" ){
+  stop("Religion labels not coded as  expected")
+}
+if (religion_labels[13]!= "Atheist" ){
+  stop("Religion labels not coded as  expected")
+}
+
+return(df)
+}
+```
+
+```{r Select All That Apply Demographic, echo=FALSE}
+#TODO : This code block can be removed if there are no questions that asked with various responses Do You Know A ...?
+#Otherwise, this may need to be updated for new polls
+#This was formatted this way because it was a Select All That Apply Question and we wanted a binary response for responded to at least one
+
+#Creating two new columns to contain a boolean for if someone knows at least one refugee or at least one muslim
+
+#Convert to integer from double and then to logical to use "or" | to check if at least one is TRUE
+#Only 1-6 are yes responses. 7&8 are no & unsure
+temp = df %>%
+  mutate(D_LikeIceCream = as.logical(as.integer(D_FlavorChoices_1)) | as.logical(as.integer(D_FlavorChoices_2))  | as.logical(as.integer(D_FlavorChoices_3))) 
+
+# #Adding labels
+var_lab(temp$D_LikeIceCream) = "Do you like ice cream? Yes ..."
+
+#Now recode TRUE to 1 to YES and NA to No
+like_ice_cream = expss::recode(temp$D_LikeIceCream, "Yes" = 'TRUE' ~ 1, "No" = NA ~ 2,with_labels = TRUE) 
+df$D_LikeIceCream = like_ice_cream
+
+
+#Now rename the columns so they will not show up in the bigcrosstab that matches on D_
+df = df %>%
+  rename("FlavorChoices_1" = "D_FlavorChoices_1","FlavorChoices_2" = "D_FlavorChoices_2","FlavorChoices_3" = "D_FlavorChoices_3","FlavorChoices_7" = "D_FlavorChoices_7","FlavorChoices_8" = "D_FlavorChoices_8")
+```
+
+```{r recode all, echo=FALSE}
+#Recoding should likely be the same across polls and none of this or the corresponding functions for each type of recoding should need updating
+
+recode_all = function(df,race=TRUE,age=TRUE,party=TRUE,edu=TRUE,ideo=TRUE,region=TRUE,religion=TRUE,race_edu=TRUE){
+  if (race){
+    df = recode_race(df)
+  }
+  if (age){
+    df = recode_age(df)
+  }
+  if (party){
+    df = recode_party(df)
+  }
+  if (edu){
+    df = recode_edu(df)
+  }
+  if (ideo){
+    df = recode_ideo(df)
+  }
+  if (region){
+    df = recode_region(df)
+  }
+  if (religion){
+    df = recode_religion(df)
+  }
+  if (race_edu){
+    df=recode_race_edu(df)
+  }
+  
+  #recodings removed the haven labelled class so I'm adding it back for all columns
+  for (col in names(df)){
+    df[[col]] = haven::labelled(df[[col]],val_lab(df[[col]]),var_lab(df[[col]]))
+  }
+  
+  
+  return (df)
+}
+
+df = recode_all(df)
+```
+
+```{r audience helper code, echo=FALSE}
+#TODO may need to update the audience code with different values/changes based on survey analysis
+
+
+#Use this for questions where respondents need to select between 2 or 3 statements
+#opp_val is value corresponding to Opposition Statement
+#base_val is value corresponding to Base statement
+#If respondent doesnt select base or opposition, they'll get 0 change in score
+Statement_conditions = function(df, question, audience_score, opp_val, base_val, change){
+  #Add to score using question column input based on values
+  
+  # opposition val -> Subtract 50 for opposition
+   df[[audience_score]][df[[question]] == opp_val] =  df[[audience_score]][df[[question]] == opp_val] - change
+  
+   # base -> Add 50 to score
+   df[[audience_score]][df[[question]] == base_val] =  df[[audience_score]][df[[question]] == base_val] + change
+ 
+   #Other vals get 0
+   
+   return (df)
+}
+
+
+#Use this for questions that have the support responses
+support_conditions = function(df,audience_score,question_list){
+  # 1= Strongly support, 2= Somewhat support, 3 = Somewhat oppose, 4 = Strongly oppose, 5 = Not sure
+  
+  for (q in question_list){
+    
+    #Strongly support
+    df[[audience_score]][df[[q]]==1 & !is.na(df[[q]])] = df[[audience_score]][df[[q]]==1  & !is.na(df[[q]])] + 10
+    
+    #Somewhat support
+    df[[audience_score]][df[[q]]==2 & !is.na(df[[q]])] = df[[audience_score]][df[[q]]==2 & !is.na(df[[q]])] + 5
+    
+    #Somewhat oppose
+    df[[audience_score]][df[[q]]==3 & !is.na(df[[q]])] = df[[audience_score]][df[[q]]==3 & !is.na(df[[q]])] - 5
+    
+    #Strongly oppose
+    df[[audience_score]][df[[q]]==4 & !is.na(df[[q]])] = df[[audience_score]][df[[q]]==4 & !is.na(df[[q]])] - 10
+    
+    #5/Not sure - no score change
+  }
+  
+  return(df)
+}
+
+
+fav_conditions = function(df,audience_score,q){
+#Takes a favorability question and an audience score variable, and adds/subtracts the score based on the contents of the public opinion variable
+  
+  # 1 = Very Favorable, 2=Somewhat Favorable, 3=somewhat unfavorable, 4=very unfavorable, 5 heard of/no opinion, 6 never heard of
+  
+  #Very Favorable
+  df[[audience_score]][df[[q]]==1 & !is.na(df[[q]])] = df[[audience_score]][df[[q]]==1  & !is.na(df[[q]])] + 10
+  
+  #Somewhat Favorable
+  df[[audience_score]][df[[q]]==2 & !is.na(df[[q]])] = df[[audience_score]][df[[q]]==2  & !is.na(df[[q]])] + 5
+  
+  #Somewhat unfavorable
+  df[[audience_score]][df[[q]]==3 & !is.na(df[[q]])] = df[[audience_score]][df[[q]]==3  & !is.na(df[[q]])] - 5
+  
+  #Very Unfavorable
+  df[[audience_score]][df[[q]]==4 & !is.na(df[[q]])] = df[[audience_score]][df[[q]]==4  & !is.na(df[[q]])] - 25
+  
+  #else no change in score
+  
+  return (df)
+
+}
+
+aud_conditions = function(df, audience_type, base_cutoff, pers_cutoff){
+  #Note the column audience categories is prefilled with all "Opposition" strings
+  #Takes an audience score variable and a minimum cutoff for the base and persuadable categories, and returns an audience category
+
+  score_str = paste(audience_type,"_Audience_Score",sep="")
+  audience_str = paste(audience_type, "_Audience_categories",sep="")
+  
+  #Relabel with persuadable if > persuadable cutoff
+  df[[audience_str]][df[[score_str]] > pers_cutoff] = "Persuadable"
+  
+  #Relabel with base if > base cutoff
+  df[[audience_str]][df[[score_str]] > base_cutoff] = "Base"
+  
+  return (df)
+}
+
+```
+
+
+```{r audience code, echo=FALSE}
+#This code should not need to be changed for future surveys
+
+generate_audiences = function(df, audience_type_label, support_list, fav_q = NULL, base_cutoff = 5, pers_cutoff = -5){
+  #Function that can be used to generate a score and label for an audience given a label for the type of audience
+  #audience_type_label should be a prefix that will be appended to "_Audience_Score" & "_Audience_categories" and will be the variable  names for these columns
+  #support_list should be a list of variable questions used in the support audience function
+  #fav_q is a favorability question used for scoring
+  #base_cutoff, pers_cutoff are the cutoff scores to separate Base / Persuadable / Opposition
+  
+  score_label = paste(audience_type_label,"_Audience_Score",sep="")
+  category_label = paste(audience_type_label,"_Audience_categories",sep="")
+  
+  #Make a new column in df called score_label and manipulate score based on value response
+  df[[score_label]] = rep(0,nrow(df)) #start all scores at 0
+  
+  #Start with support conditions scores
+  df = support_conditions(df,score_label,support_list)
+  
+  #Favorability conditions
+  if (!is.na(fav_q)){
+    df = fav_conditions(df,score_label,fav_q)
+  }
+  
+  #initiate all audiences as Opposition
+  df[[category_label]] =  rep("Opposition",nrow(df))
+  
+  #Audience cutoffs. Base is 1st value, Persuadable is 2nd
+  df = aud_conditions(df, audience_type_label, base_cutoff = base_cutoff, pers_cutoff = pers_cutoff)
+  
+  #returns df which now has score and audience columns
+  return (df)
+}
+
+```
+
+```{r, calling audience code, echo=FALSE}
+#TODO this code will need to be updated with new variables and cutoffs in the parameters fed into generate audiences
+
+support_list = c('Q87', "Q99")
+fav_q = "Q9_1"
+
+df = generate_audiences(df, "RI", support_list = support_list, fav_q = fav_q, base_cutoff = 5, pers_cutoff = -5)
+```
+
+
+```{r NEW Raked weighting function, echo=FALSE, include=FALSE}
+#This should be the same across surveys, no need to update
+
+# A function that outputs a weight column in a df
+# Inputs:
+# 1 - dataframe 
+# 2 - var_names is a vector of variable names
+# 3 - weights is a list of weight vectors with names that match the variable names
+
+# Within the function - Set variable names as weights in order of their position in the labels
+
+run_raked_weighting = function (df, var_names, weights, pctlim=0.05) {
+  
+  #the df can tell us the order the labels should be in
+  #the weights can give us the value of weight per each label
+  #var_names are the labels we are using
+  
+  targets = list()
+  
+  #First check the order of labels match
+  for (name in var_names){
+    
+    #Weights is a named input list that should be in order
+    ordered_weights = weights[[name]]
+    
+    #Confirm order of labels in weights matches the order in the dataframe
+    matching_order = identical(names(ordered_weights),get_labels(df[[name]]))
+
+    if (!matching_order){
+      stop(paste("Weight labels and dataframe labels are not in the same order in ",name))
+    }
+    
+    #Add ordered weights to targets list
+    targets=append(targets,weights[name])
+  }
+  
+  #Now targets contains a list of weight vectors
+  #We need to name targets with string names the same as variable column names
+
+  #Create df with only target variables as columns
+  anesdf = df[, names(targets)]
+  
+  #Create a serial id number column (range of 1 through # of rows in df)
+  anesdf$caseid = 1:nrow(anesdf)
+  
+  # Laura's comment - Convert to data frame to resolve error message
+  #Error = Error in x + weights : non-numeric argument to binary operator
+  anesdf = as.data.frame(anesdf)
+  
+  #run raked weighting
+  #cap default is 5, max weight to be used
+  #If iterate=TRUE, anesrake will check whether any variables that
+  #were not used in raking deviate from their targets by more than pctlim percent
+  #If type="nolim", all variables specified in inputter will be included in the
+  #weighting procedure. 
+  outsave = anesrake(targets, anesdf, caseid = anesdf$caseid,
+                     verbose = TRUE, cap = 5, choosemethod = "total",
+                     type = "nolim", pctlim = pctlim, nlim = 11,
+                     iterate = TRUE)
+  
+  #save weights as column in df
+  df$weightvec = outsave$weightvec
+  
+  #Divide weights column to compress sample size
+  weightcompressed = df$weightvec * compression_coeff
+  
+  df$weightcompressed = weightcompressed
+  
+  return (df)
+} 
+
+
+ 
+```
+
+
+```{r Running raked weighting, include=FALSE, echo=FALSE}
+# TODO May need to update weights, what variables are used for the weighting
+
+#Weights 
+#Must use this format. The labels in the following vectors dont need to match names but should match order of labels
+#i.e. OK to use Group1 = .21 instead of 18-25 but this Group1 must be in first position of vector output from get_labels
+#Note that run weighting function will throw an error if the label orders don't match
+
+#Note if a poll is missing data from Nonbinary people, this will not run.
+D_Gender = c(Male=.475, Female=.52,Nonbinary=.005)
+D_PID_ind = c(Democrat=.34, Republican=.31, Independent=.35)
+D_Age_cond3 = c(Group1=.21,Group2=.25,Group3=.35,Group4=.19)
+D_Race = c(Hispanic=.16,Black=.13,White=.63,Asian=.06,Other=0.02)
+D_Edu_cond = c(Noncollege=.66,College=.34)
+D_Edu_race = c(WhiteNC=.41,WhiteCollege=.22,Other=.37)
+
+#Need to use this order of region based on order of output from get_labels
+D_Region = c(SouthAtlantic=.19,Northeast=.18,Midwest=.22,West=.23,SouthCentral=.18)
+
+#These names must be in order of vector output from labels and must match the label output
+names(D_Gender)=c("Male","Female","Non-binary/Non-conforming")
+names(D_PID_ind) = c("Democrat","Republican","Independent")
+names(D_Age_cond3) = c("18-29","30-44","45-64","65+")
+names(D_Race) = c("Hispanic/Latinx (of any race)","Black/African American",
+                     "White (not Hispanic/Latinx or Middle Eastern/North African)",
+                     "Asian American/Pacific Islander","Other/Mixed Race")
+names(D_Edu_cond) = c("No college","College")
+names(D_Region) = c("South Atlantic","South Central","Midwest","West","Northeast" )
+names(D_Edu_race) = c("White No College","White College","POC")
+
+#The order of the weights here must match the order of var_names
+weights = list(D_Gender,D_PID_ind,D_Age_cond3,D_Race,D_Edu_cond,D_Region,D_Edu_race)
+var_names = c("D_Gender","D_PID_ind","D_Age_cond3","D_Race","D_Edu_cond","D_Region","D_Edu_race")
+names(weights) = var_names
+
+#pctlim to send in
+pctlim = .005
+
+df = run_raked_weighting(df, var_names, weights, pctlim)
+weights_compressed_vec = df$weightcompressed
+```
+
+```{r mover, include=FALSE}
+#This code should work across surveys
+
+create_mover_vars = function(df, pre_colnames, post_colnames){
+  #Takes input of dataframe, pre_colnames (vector  of Qs like Q20, Q44, etc)
+  #and post_colnames (vector of corresponding Qs by position)
+  #returns a dataframe
+  
+  #Confirm lengths are the same size
+  if(length(pre_colnames)!=length(post_colnames)){
+    stop("Lengths of pre/post column names are not the same size") 
+  }
+  
+  #for loop to iterate through all of the colnames
+  for (index in seq(1:length(pre_colnames))){
+    pre = pre_colnames[index] #This is just a string of the question #
+    post = post_colnames[index] #This is just a string of the question #
+    
+    #create dynamic variable name patterns for column names
+    varname_mover = paste("mover",pre,post,sep="_")
+    varname_mover_cond = paste("mover_cond",pre,post,sep="_")
+    
+    
+    #Set every row of these new vars with empty string
+    df[[varname_mover]] =  rep(" ",nrow(df))
+    df[[varname_mover_cond]] = rep(" ",nrow(df))
+    
+    #Getting the column vectors for pre and post
+    pre_col=df[[pre]]
+    post_col=df[[post]]
+    
+    #Is there an easy way to get the label given a value? If not, can loop through all possible values for pre
+    
+    for (value in get_values(pre_col)){
+      
+      for (value2 in get_values(post_col)){
+        
+        #Tedious but fill in for each combo
+        pre_label = get_labels(pre_col)[value]
+        post_label = get_labels(post_col)[value2]
+        
+        new_label = ""
+        new_label_cond = ""
+        if (value == value2){
+          new_label = paste("Always",pre_label)
+          new_label_cond = "No movement"
+        }
+        else{
+          new_label = paste("Moved from",pre_label, ">", post_label)
+          new_label_cond = paste("Move toward",post_label)
+        }
+        
+        
+        #Set the values
+        df[[varname_mover]][pre_col==value & post_col==value2] = new_label
+        
+        df[[varname_mover_cond]][pre_col==value & post_col==value2] = new_label_cond
+      
+      }
+      
+    }
+    #Set variable label with the original question for this variable
+    #Set var label i.e. question using the pre col
+    var_lab(df[[varname_mover]]) = var_lab(pre_col)
+    var_lab(df[[varname_mover_cond]]) = var_lab(pre_col)
+
+    
+  }
+  
+  return(df)
+}
+```
+
+```{r apply mover, echo=FALSE}
+#TODO : Update these vectors or remove this code chunk if you don't have any pairs of variables that represent movers in the poll
+
+pre_colnames = c("Q10")
+post_colnames = c("Q97")
+df = create_mover_vars(df,pre_colnames,post_colnames)
+
+```
+
+```{r export to sav, echo=FALSE}
+#TODO update this filename string with what you want the output sav file to be saved as
+#This outputs the raw data as a sav file
+
+write_sav(df,"raw_poll_post_weighting_test.sav")
+```
+

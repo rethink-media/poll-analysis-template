@@ -1,0 +1,11 @@
+body{
+font-family: Open Sans;
+}
+
+.standard td{
+  width: 75px;
+}
+
+.standard td:first-child{
+  width:500px;
+}
