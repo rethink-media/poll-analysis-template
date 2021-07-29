@@ -154,7 +154,7 @@ get_var_list = function(input,add_bool){
         #Else if false, exclude nonsubtotals
         else{
           #add_bool is false so need to remove non subtotal rows/columns
-          #can set exclude_z to be all columns greater than 4 (i.e. 5, 6 etc)
+          #can set exclude_z to be all values greater than 4 (i.e. 5, 6 etc)
           column_list=list.prepend(column_list,subtotal(df[[i]],1:2,3:4, exclude_z = hide(greater(4)), prefix="Total: ",position = "above",add=add_bool))
         }
         
@@ -209,10 +209,12 @@ create_crosstab_app_adv = function(input1,input2,input3,add_bool=FALSE,show_coun
   
   #If add_bool was FALSE, need to remove columns or rows with exclude_z
   if (!add_bool){
-    match_vec = match_row(contains("exclude_z"),ct) 
+    #Find rows that contain exclude_z
+    #Take everything but these rows
+    match_vec = match_row(contains("exclude_z"),ct) #Returns a matrix
     ct = ct[is.na(match_vec)]
     
-    #Hide any columns that don't start with column
+    #Keep any columns that don't contain exclude_z
     ct = keep(ct, (!contains("exclude_z")))
   }
   
