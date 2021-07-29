@@ -146,7 +146,17 @@ get_var_list = function(input,add_bool){
       
       #has subtotal so add subtotal of column to list
       else{
-        column_list=list.prepend(column_list,subtotal(df[[i]],1:2,3:4,prefix="Total: ",position = "above",add=add_bool))
+        
+        #If true (i.e. add totals)
+        if (add_bool){
+          column_list=list.prepend(column_list,subtotal(df[[i]],1:2,3:4,prefix="Total: ",position = "above",add=add_bool))
+        }
+        #Else if false, exclude nonsubtotals
+        else{
+          #add_bool is false so need to remove non subtotal rows/columns
+          #can set exclude_z to be all columns greater than 4 (i.e. 5, 6 etc)
+          column_list=list.prepend(column_list,subtotal(df[[i]],1:2,3:4, exclude_z = hide(greater(4)), prefix="Total: ",position = "above",add=add_bool))
+        }
         
       }
     }
@@ -155,7 +165,7 @@ get_var_list = function(input,add_bool){
 }
 
 
-create_crosstab_app_adv = function(input1,input2,input3,add_bool=FALSE,hide_rows=FALSE, hide_columns=FALSE, show_counts=FALSE) {
+create_crosstab_app_adv = function(input1,input2,input3,add_bool=FALSE,show_counts=FALSE) {
   add_bool=!add_bool
   
   #column1 for the demographics
@@ -197,15 +207,13 @@ create_crosstab_app_adv = function(input1,input2,input3,add_bool=FALSE,hide_rows
     }
   }
   
-  #Hide any rows that don't start with Total
-  if (hide_rows){
-    match_vec = match_row(contains("Total: "),ct) #Use this to find rows that start with "Total" and remove if not
-    ct = ct[!is.na(match_vec)]
-  }
-  
-  #Hide any columns that don't start with column
-  if (hide_columns){
-    ct = keep(ct, (contains("row_labels")| contains("Total")))
+  #If add_bool was FALSE, need to remove columns or rows with exclude_z
+  if (!add_bool){
+    match_vec = match_row(contains("exclude_z"),ct) 
+    ct = ct[is.na(match_vec)]
+    
+    #Hide any columns that don't start with column
+    ct = keep(ct, (!contains("exclude_z")))
   }
   
   #Changing any na values in the table to 0
@@ -214,33 +222,16 @@ create_crosstab_app_adv = function(input1,input2,input3,add_bool=FALSE,hide_rows
 }
 
 #Use for the app to send two columns to crosstab with
-create_crosstab_app = function(input1,input2,add_bool=FALSE,hide_rows=FALSE, show_counts=FALSE) {
+create_crosstab_app = function(input1,input2,add_bool=FALSE, show_counts=FALSE) {
   add_bool=!add_bool
   
   #column1 for the questions
-  column1=list()
+  column1=get_var_list(input1, add_bool)
   
   #Column 2 for the demographics
   column2=to_list(for (j in input2) list(df[[crosstab_uf[j]]]))
   
-  #Looping through the questions to add subtotals where applicable
-  for (q in input1){
-    #q is the quesiton label
-    #need to convert to question #
-    i = names(poll_qs)[which(question_labels==q)]
-    
-    #not in subtotals, just add column to list
-    if (i %in% no_subtotal_qs){
-      column1=list.prepend(column1,df[[i]])
-    }
-    
-    #has subtotal so add subtotal of column to list
-    else{
-      column1=list.prepend(column1,subtotal(df[[i]],1:2,3:4,prefix="Total: ",position = "above",add=add_bool))
-      
-      
-    }
-  }
+  
   #Now put together the table
   if (show_counts){
     ct = cro_cases(column1, column2,
@@ -253,10 +244,13 @@ create_crosstab_app = function(input1,input2,add_bool=FALSE,hide_rows=FALSE, sho
                   total_row_position = "none")
   }
   
-  #Hide any rows that don't start with Total
-  if (hide_rows){
-    match_vec = match_row(contains("Total: "),ct) #Use this to find rows that start with "Total" and remove if not
-    ct = ct[!is.na(match_vec)]
+  #If add_bool was FALSE, need to remove columns or rows with exclude_z
+  if (!add_bool){
+    match_vec = match_row(contains("exclude_z"),ct) 
+    ct = ct[is.na(match_vec)]
+    
+    #Hide any columns that don't start with column
+    ct = keep(ct, (!contains("exclude_z")))
   }
   
   

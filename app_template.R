@@ -43,16 +43,13 @@ ui <- fluidPage(title = "Test App - Fill Me In",
                                                      choices = names(crosstab_uf),
                                                      multiple=TRUE,
                                          ),
-                                         
-                                         materialSwitch(inputId = "add_subtotal",
-                                                        label = strong("Replace rows already in subtotals"), 
+                                         materialSwitch(inputId = "show_counts",
+                                                        label = strong("Show Weighted Counts instead of Percents"), 
                                                         value=FALSE),
                                          
-                                         materialSwitch(inputId = "hide_non_total_rows",
-                                                        label = strong("Hide non Total rows"), 
-                                                        value=FALSE
-                                                        
-                                         )
+                                         materialSwitch(inputId = "add_subtotal",
+                                                        label = strong("Reduce subtotal rows to just totals"), 
+                                                        value=FALSE)
                                        ),
                                        
                                        mainPanel(
@@ -86,20 +83,13 @@ ui <- fluidPage(title = "Test App - Fill Me In",
                                                      choices = c("None",names(crosstab_uf)),
                                                      multiple=FALSE,
                                          ),
-                                         
-                                         materialSwitch(inputId = "add_subtotal_adv",
-                                                        label = strong("Replace rows/columns already in subtotals"), 
+                                  
+                                         materialSwitch(inputId = "show_counts_adv",
+                                                        label = strong("Show Weighted Counts instead of Percents"), 
                                                         value=FALSE),
-                                         materialSwitch(inputId = "hide_non_total_rows_adv",
-                                                        label = strong("Hide non Total rows"), 
-                                                        value=FALSE
-                                                        
-                                         ),
-                                         materialSwitch(inputId = "hide_non_total_columns_adv",
-                                                        label = strong("Hide non Total columns"), 
-                                                        value=FALSE
-                                                        
-                                         )
+                                         materialSwitch(inputId = "add_subtotal_adv",
+                                                        label = strong("Reduce subtotal rows/columns to just totals"), 
+                                                        value=FALSE)
                                          
                                        ),
                                        
@@ -147,12 +137,9 @@ server <- function(input, output) {
     #If there is a message with this label, display it.
     str_messages = "<br>"
     for (q in c(input$var_demo_adv, input$var_demo_adv2)){
-      #print(q)
       if (q %in% question_labels){
-        print(q)
         i = names(poll_qs)[which(question_labels==q)]
         message=get_column_message(df[[i]])
-        print(message)
         if (message != ""){
           str_messages=paste(str_messages,"<b>",get_label(df[[i]]),"</b> : ",message,"<br><br>") 
         }
@@ -167,7 +154,7 @@ server <- function(input, output) {
     
     if (!is.null(input$var_question_reg) & !is.null(input$var_demo_reg)){
       HTML(paste("<h5>This crosstab represents the percentage of people who fall into the column category that answered the row response to the selected question(s).</h5>"))
-      htmlTable(create_crosstab_app(input$var_question_reg, input$var_demo_reg,input$add_subtotal, input$hide_non_total_rows),align="c")
+      htmlTable(create_crosstab_app(input$var_question_reg, input$var_demo_reg,input$add_subtotal, input$show_counts),align="c")
     }
     else{
       HTML(paste("<h5>Welcome to the custom crosstab explorer for the survey. This space will be empty until at least one value for each dropdown is selected on the left panel.</h5>"))
@@ -180,7 +167,7 @@ server <- function(input, output) {
     
     if (!is.null(input$var_demo_adv) & !is.null(input$var_demo_adv2) & !is.null(input$var_demo_adv3)){
       HTML(paste("<h5>This crosstab represents the percentage of people who fall into the column category that answered the row response to the selected question(s).</h5>"))
-      htmlTable(create_crosstab_app_adv(input$var_demo_adv, input$var_demo_adv2, input$var_demo_adv3,input$add_subtotal_adv,input$hide_non_total_rows_adv, input$hide_non_total_columns_adv),align="c")
+      htmlTable(create_crosstab_app_adv(input$var_demo_adv, input$var_demo_adv2, input$var_demo_adv3,input$add_subtotal_adv, input$show_counts_adv),align="c")
     }
     else{
       HTML(paste("<h5>Welcome to the custom crosstab explorer for the survey. This space will be empty until at least one value for each dropdown is selected on the left panel.</h5>"))
