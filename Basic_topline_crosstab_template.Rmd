@@ -46,10 +46,6 @@ library(expss)
 #TODO fill in new file_name, in .sav format, here  
 file_name = "raw_poll_post_weighting_test.sav"
 
-```
-
-
-```{r Import survey file, include=FALSE}
 #Use haven to import  the sav file specified above
 df = haven::read_spss(file_name)
 
@@ -79,7 +75,7 @@ df[[q]] = haven::labelled(df[[q]],val_lab(df[[q]]),var_lab(df[[q]]))
 ```{r read in messages csv, include=FALSE}
 #TODO Update file_name path or remove this chunk if no messages
 #Poll messaging
-#Reading in a table that maps the message text to the message labels
+#Reading in a table that maps the message text to the message labels. This message codes file was made manually and did not come from Qualtrics
 messages = read_csv("message_codes.csv")
 messages_vec = messages$message
 names(messages_vec) = messages$var_lab
@@ -139,6 +135,7 @@ split_column = "D_Split_Ice_Cream_FroYo"
 
 ```{r Functions to generate toplines and crosstabs, echo=FALSE}
 #Helper functions used to create expss tables
+#May want to adjust these functions or make new ones if you want the calculations in the tables to be different
 
 create_toplines_subtotals = function(df, column, subtotal_gp1, subtotal_gp2) {
   #Returns topline table for each df column with counts and valid percent
@@ -161,14 +158,11 @@ create_toplines_subtotals = function(df, column, subtotal_gp1, subtotal_gp2) {
   return (temp)
 }  
 
-#TODO: If a poll does not have standard ordering of values for subtotal questions, need to adjust the 1:2, 3:4 below
-# The numbers 1,2,3,4 refer to the values
-# For example, 1=Very Favorable, 2=Somewhat Favorable, 3=Somewhat Unfavorable, 4=Very Unfavorable
-create_toplines_with_counts = function(df, col) {
+create_toplines_with_counts = function(df, col, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4) {
   #Returns topline table for each df column with counts and valid percent
   #requires poll_qs (df w/all poll qs) to be pre-defined
   column = df[[col]]
-  subtotals = create_toplines_subtotals(df,column, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4)
+  subtotals = create_toplines_subtotals(df,column, subtotal_gp1 = subtotal_gp1, subtotal_gp2 = subtotal_gp2)
   temp = df %>%
     #specify variables for which statistics will be computed (rows in table)
     tab_cells(column) %>%
@@ -388,18 +382,6 @@ update_table_styling = function(df,caption, num_rows=7){
 }
 
 
-#This expects a matrix question with many 7 rows (5 + 2 subtotals) and 4 columns
-#Such as Columns for labels, ice cream, froyo, all VS standard table above is just labels, count, percent
-update_table_styling_4cols = function(df,caption, num_rows=7){
-  #where contains the position of where the styling will take effect
-  #Note that where starts at index 0
-  where = rbind(c(num_rows-2,1),c(num_rows-1,1),c(num_rows-1,2),c(num_rows-1,3),c(num_rows,2),c(num_rows,3),c(num_rows-1,4),c(num_rows,4))
-  style = c("font-weight: bold;")
-  css.cell = matrix("",nrow(df),ncol(df))
-  css.cell[where] = style
-  return (htmlTable(df,css.cell=css.cell,caption=caption,align="lccc"))
-}
-
 #Could use for questions like
 #Like 1 = Very Favorable, 2=Somewhat Favorable, 3=somewhat unfavorable, 4=very unfavorable, 5 heard of/no opinion, 6 never heard of
 #Or like -  1= Close Ally, 2= Ally but not a close one, 3=neither an ally nor an enemy, 4=unfriendly not an enemy, 5=enemy, 6=heard of, no opinion, 7=never heard of
@@ -424,7 +406,7 @@ update_table_styling_big_matrix = function(df, num_rows=8){
 ```
 
 ```{r Matrix, echo=FALSE, results="asis"}
-#TODO May want to update what actually appears in the table outputs
+#May want to update what actually appears in the table outputs
 #i.e. remove percent and/or counts, show total row or not, show subtotals or not
 
 #This is for updating the dataframe variable labels to not contain the question for multiple choice
@@ -508,12 +490,13 @@ print(styled_table)
 
 ```{r table output helper functions, echo=FALSE, include=FALSE}
 #Note that this display function returns a standard table that may include subtotals if relevant and contains count/percent for total respondents
-#The functions may need to be updated if you want to return a crosstab instead of Question with Audience or Question with Country/Split
+#The functions may need to be updated if you want to return a crosstab instead of Question with Audience or Question with Country/Split (see q %in% split_qs code)
 
 display_table = function(col,df){
   #Function that takes in a question and returns a table
   #TODO if you don't have a messages csv, remove the line below and set temp to df
   temp = update_columns_with_message_text(df,col) 
+  #temp = df
   
   if (q %in% no_subtotal_qs){
     topline_table = create_toplines_with_counts_no_subtotals(temp,col)
@@ -526,7 +509,10 @@ display_table = function(col,df){
     topline_table = create_toplines_with_counts_cro(temp, col, split_column, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4)
     }
   else{
-    topline_table = create_toplines_with_counts(temp,col)
+    #TODO: If a poll does not have standard ordering of values for subtotal questions, need to adjust the 1:2, 3:4 below
+    # The numbers 1,2,3,4 refer to the values
+    # For example, 1=Very Favorable, 2=Somewhat Favorable, 3=Somewhat Unfavorable, 4=Very Unfavorable
+    topline_table = create_toplines_with_counts(temp,col, subtotal_gp1 = 1:2, subtotal_gp2 = 3:4)
   }
   
   table_output = addHtmlTableStyle( x=topline_table, css.rgroup = c("font-weight:normal"), css.cell = c("width: 500px", rep("width: 75px", ncol(topline_table) - 1)))
@@ -553,7 +539,7 @@ for (q in names(poll_qs)){
       print(htmlTable(table, caption = paste("<br><br>"), total = FALSE, align="c"))
     }
     else if (q %in% matrix_qs){
-      #Do nothing since printed in block above
+      #Do nothing since printed the table in matrix block above
     }
     
     else{

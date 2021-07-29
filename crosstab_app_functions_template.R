@@ -18,7 +18,7 @@ library(expss)
 library(rlist)
 
 #Reading in the data
-#This is generating from running the Import_final.Rmd notebook
+#This is generating from running the Import_template.Rmd notebook
 #This is the data already recoded and weighted
 #TODO: Change filename
 file_name = "raw_poll_post_weighting_test.sav"
@@ -129,7 +129,7 @@ update_columns_with_message_text = function(df,col){
 #List of questions from the Poll that do not need subtotals
 no_subtotal_qs = c("Q10","Q38","Q40", "Q97", "mover_Q10_Q97", "mover_cond_Q10_Q97")
 
-#Helper function used to return a list of variables that will be used in the cro tables
+#Helper function used to return a list of variables from an input list from app input dropdown that will be used in the cro tables
 get_var_list = function(input,add_bool){
   column_list = list()
   for (j in input){
@@ -268,12 +268,17 @@ create_crosstab_app = function(input1,input2,add_bool=FALSE,hide_rows=FALSE, sho
 
 
 
-update_table_styling = function(df,caption){
+#Here is a function that can be used to update a table's css styling
+#Note that this expects a standard table of the first 5 rows are regular
+#the last two are subtotals
+#Like - 1= Strongly support, 2= Somewhat support, 3 = Somewhat oppose, 4 = Strongly oppose, 5 = Not sure
+update_table_styling = function(df,caption, num_rows=7){
+  #num_rows should be the number of rows+subtotal rows in the table
   #where contains the position of where the styling will take effect
   #Note that where starts at index 0
-  where = rbind(c(5,1),c(6,1),c(6,2),c(6,3),c(7,2),c(7,3))
-  style = c("font-weight: bold;","font-weight: bold;")
+  where = rbind(c(num_rows-2,1),c(num_rows-1,1),c(num_rows-1,2),c(num_rows-1,3),c(num_rows,2),c(num_rows,3))
+  style = c("font-weight: bold;")
   css.cell = matrix("",nrow(df),ncol(df))
   css.cell[where] = style
-  return (htmlTable(df,css.cell=css.cell,caption=caption,align="lccc"))
+  return (htmlTable(df,css.cell=css.cell,caption=caption,align="lcc"))
 }

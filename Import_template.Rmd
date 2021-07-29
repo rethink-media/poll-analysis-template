@@ -10,7 +10,7 @@ output:
 
 #1.Save as a copy this file so you have reference to this working file on test while you work on changes to it for your new poll
 #2. Update any code with comments including "TODO"
-#3. Then run this file to produce a weighted, recoded, and audience labelled file that can be used to generate toplines & crosstabs in the other template notebooks
+#3. Then knit this file to produce a weighted, recoded, and audience labelled sav file that can be used to generate toplines & crosstabs in the other template notebooks
 
 library(sjPlot)
 library(tidyverse)
@@ -34,12 +34,14 @@ library(expss)
 ```{r User input variables, include=FALSE}
 #User input variables
 
+#TODO update file name to new poll sav
 file_name = "Test+Poll+for+R+Code_July+19,+2021_17.34.sav"
 
 desired_total_responses = 375
 
 weighted = TRUE
 
+#TODO update any columns to rename
 # Likely want to rename the Qualtrics D_Region that contains states to D_state to later use D_Region for regions like SouthWest
 # May want to rename Qualtrics Split columns to contain a D_ to show up in crosstabs that filter to only columns that start with D_ if there was a split in the column
 #Columns to rename on read in
@@ -588,11 +590,11 @@ return(df)
 ```
 
 ```{r Select All That Apply Demographic, echo=FALSE}
-#TODO : This code block can be removed if there are no questions that asked with various responses Do You Know A ...?
+#TODO : This code block can be removed if there are no questions that asked with various responses Do You ...?
 #Otherwise, this may need to be updated for new polls
 #This was formatted this way because it was a Select All That Apply Question and we wanted a binary response for responded to at least one
 
-#Creating two new columns to contain a boolean for if someone knows at least one refugee or at least one muslim
+#Creating two new columns to contain a boolean for if someone likes at least one ice cream flavor
 
 #Convert to integer from double and then to logical to use "or" | to check if at least one is TRUE
 #Only 1-6 are yes responses. 7&8 are no & unsure
@@ -614,6 +616,7 @@ df = df %>%
 
 ```{r recode all, echo=FALSE}
 #Recoding should likely be the same across polls and none of this or the corresponding functions for each type of recoding should need updating
+#If don't want to recode one of these, set the parameter to FALSE
 
 recode_all = function(df,race=TRUE,age=TRUE,party=TRUE,edu=TRUE,ideo=TRUE,region=TRUE,religion=TRUE,race_edu=TRUE){
   if (race){
@@ -654,13 +657,13 @@ df = recode_all(df)
 ```
 
 ```{r audience helper code, echo=FALSE}
-#TODO may need to update the audience code with different values/changes based on survey analysis
+#TODO may need to update the audience code with different values/changes based on survey analysis goals
 
 
 #Use this for questions where respondents need to select between 2 or 3 statements
 #opp_val is value corresponding to Opposition Statement
 #base_val is value corresponding to Base statement
-#If respondent doesnt select base or opposition, they'll get 0 change in score
+#If respondent doesn't select base or opposition, they'll get 0 change in score
 Statement_conditions = function(df, question, audience_score, opp_val, base_val, change){
   #Add to score using question column input based on values
   
@@ -725,7 +728,7 @@ fav_conditions = function(df,audience_score,q){
 }
 
 aud_conditions = function(df, audience_type, base_cutoff, pers_cutoff){
-  #Note the column audience categories is prefilled with all "Opposition" strings
+  #Note the column of audience categories is prefilled with all "Opposition" strings
   #Takes an audience score variable and a minimum cutoff for the base and persuadable categories, and returns an audience category
 
   score_str = paste(audience_type,"_Audience_Score",sep="")
@@ -735,6 +738,7 @@ aud_conditions = function(df, audience_type, base_cutoff, pers_cutoff){
   df[[audience_str]][df[[score_str]] > pers_cutoff] = "Persuadable"
   
   #Relabel with base if > base cutoff
+  #expects base_cutoff to be higher than persuadable
   df[[audience_str]][df[[score_str]] > base_cutoff] = "Base"
   
   return (df)
@@ -746,7 +750,7 @@ aud_conditions = function(df, audience_type, base_cutoff, pers_cutoff){
 ```{r audience code, echo=FALSE}
 #This code should not need to be changed for future surveys
 
-generate_audiences = function(df, audience_type_label, support_list, fav_q = NULL, base_cutoff = 5, pers_cutoff = -5){
+generate_audiences = function(df, audience_type_label, support_list, fav_q = NA, base_cutoff = 5, pers_cutoff = -5){
   #Function that can be used to generate a score and label for an audience given a label for the type of audience
   #audience_type_label should be a prefix that will be appended to "_Audience_Score" & "_Audience_categories" and will be the variable  names for these columns
   #support_list should be a list of variable questions used in the support audience function
@@ -786,6 +790,9 @@ support_list = c('Q87', "Q99")
 fav_q = "Q9_1"
 
 df = generate_audiences(df, "RI", support_list = support_list, fav_q = fav_q, base_cutoff = 5, pers_cutoff = -5)
+
+#For example, could generate a second column of categories PS that doesn't take a favq
+df = generate_audiences(df, "PS", support_list = support_list, base_cutoff = 6, pers_cutoff = -6)
 ```
 
 
@@ -871,9 +878,8 @@ run_raked_weighting = function (df, var_names, weights, pctlim=0.05) {
 #Weights 
 #Must use this format. The labels in the following vectors dont need to match names but should match order of labels
 #i.e. OK to use Group1 = .21 instead of 18-25 but this Group1 must be in first position of vector output from get_labels
-#Note that run weighting function will throw an error if the label orders don't match
+#Note that run weighting function will throw an error if the label orders don't match or if poll is missing data from any of these groups
 
-#Note if a poll is missing data from Nonbinary people, this will not run.
 D_Gender = c(Male=.475, Female=.52,Nonbinary=.005)
 D_PID_ind = c(Democrat=.34, Republican=.31, Independent=.35)
 D_Age_cond3 = c(Group1=.21,Group2=.25,Group3=.35,Group4=.19)

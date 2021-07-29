@@ -1,6 +1,5 @@
-#To run, type this in console: runApp("[INSERT PATH NAME]")
-#runApp("App-1", display.mode = "showcase")
-#Note may need to check getwd()
+#To run, type this in console: runApp("[INSERT PATH NAME]") or can click the run app button in the upper-right corner
+#Note may need to check getwd() to get working directory to know what path to type above
 
 library(shiny)
 library(RColorBrewer)
@@ -9,14 +8,14 @@ library(shinyWidgets)
 
 
 #Moved rmd code into R file in same directory as app
-#TODO: Update source R file
+#TODO: Update source R file if using additional R code beyond this app.R file
 source("crosstab_app_functions_template.R")
 
 
 
 #add to app inside of fluidpage
 #TODO: Fill in Title and update any helptext below
-ui <- fluidPage(title = "Fill Me In",
+ui <- fluidPage(title = "Test App - Fill Me In",
                 
                 #Using tabsetPanel to organize the different tabs 
                 tabsetPanel(type = "tabs",
@@ -57,7 +56,7 @@ ui <- fluidPage(title = "Fill Me In",
                                        ),
                                        
                                        mainPanel(
-                                         htmlOutput("selected_var"),tableOutput("table") 
+                                         htmlOutput("message_text"),tableOutput("table") 
                                        )
                                      ),
                             ),
@@ -105,11 +104,12 @@ ui <- fluidPage(title = "Fill Me In",
                                        ),
                                        
                                        mainPanel(
-                                         htmlOutput("selected_var2"),tableOutput("table2") 
+                                         htmlOutput("message_text_adv"),tableOutput("table2") 
                                        )
                                      ),
                             )
                             #TODO: Can update with html files generated from the topline templates or remove these
+                            #These files will need to live in the same directory as app.R or a directory underneath
                             #tabPanel("Regular Topline", includeHTML("Fill Me In.html")),
                             #tabPanel("Audience Topline", includeHTML("Fill Me In 2.html"))
                 ),
@@ -125,7 +125,7 @@ ui <- fluidPage(title = "Fill Me In",
 
 
 server <- function(input, output) {
-  output$selected_var <- renderUI({ 
+  output$message_text <- renderUI({ 
     #It seems easier to ensure line breaks by using renderUI of HTML vs. renderText
     
     #If there is a message with this label, display it.
@@ -141,7 +141,7 @@ server <- function(input, output) {
   })
   
   #For advanced crosstab, display messages
-  output$selected_var2 <- renderUI({ 
+  output$message_text_adv <- renderUI({ 
     #It seems easier to ensure line breaks by using renderUI of HTML vs. renderText
     
     #If there is a message with this label, display it.

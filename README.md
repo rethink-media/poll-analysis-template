@@ -211,7 +211,7 @@ Open this file and update any code with TODO. These are mainly styling/editing u
 
 * [`htmlTable`](https://cran.r-project.org/web/packages/htmlTable/htmlTable.pdf) is a useful package for turning the results of the expss table functions into htmltables that display nicely in html markdown.
 * Some useful things to look at with this package:
-	* css.cell - A parameter input to htmlTable to override the style of the table with the css contained in this parameter. css.cell can take a matrix that is the size of the number of rows by number of columns. Or it can take a vector of length of the number of columns. If it takes a vector, each column refers to the styling for the full column in the table. Note some styling can be adjusted with the [`style.css`](https://github.com/rethink-media/poll-analysis-template/blob/main/style.css) but a lot of the table styling from htmlTable will override what's in that file. You can specify where you want certain styling to take place and what style to use there by specificing locations in the css.cell matrix. Refer to the code and [`this Stackoverflow`](https://stackoverflow.com/questions/31323885/how-to-color-specific-cells-in-a-data-frame-table-in-r) for examples. Search for "css.cell" in the [`Basic_topline_crosstab_template.Rmd`](https://github.com/rethink-media/poll-analysis-template/blob/main/Basic_topline_crosstab_template.Rmd) for examples of how it was used.
+	* css.cell - A parameter input to htmlTable to override the style of the table with the css contained in this parameter. css.cell can take a matrix that is the size of the number of rows by number of columns. Or it can take a vector of length of the number of columns. If it takes a vector, each column refers to the styling for the full column in the table. Note some styling can be adjusted with the [`style.css`](https://github.com/rethink-media/poll-analysis-template/blob/main/style.css) but a lot of the table styling from htmlTable will override what's in that file. You can specify where you want certain styling to take place and what style to use there by specificing locations in the css.cell matrix. Refer to the code and [`this Stackoverflow`](https://stackoverflow.com/questions/31323885/how-to-color-specific-cells-in-a-data-frame-table-in-r) for examples. Search for "css.cell" in the [`Basic_topline_crosstab_template.Rmd`](https://github.com/rethink-media/poll-analysis-template/blob/main/Basic_topline_crosstab_template.Rmd) for examples of how it was used to apply selective bolding to tables with subtotal rows.
 	* align - A parameter input to htmlTable to adjust the center/right/left alignment of values in the table columns. Also, refer to this [`How-to use htmltable vignette`](https://cran.r-project.org/web/packages/htmlTable/vignettes/general.html) for examples. This can take a single letter to set the alignment for all columns or a string of length of the number of columns where each letter refers to an alignment of a column.
 	* addHtmlTableStyle - useful function to apply additional table styles. This was useful for overriding the default table styling to bold row headings. By providing font-weight normal to the css.rgroup : addHtmlTableStyle(x=topline_table,css.rgroup = c("font-weight:normal"))
 
@@ -229,11 +229,10 @@ Open this file and update any code with TODO. These are mainly styling/editing u
 ### R Shiny
 * To deploy R Shiny apps using shinyapps.io:
 	1. Install RSConnect by running  `install.packages('rsconnect')` in your console
-	2. Authorize the account by running `rsconnect::setAccountInfo(name='<Your Account Name>',
+	2. Authorize the account by running `library(rsconnect)` and then `rsconnect::setAccountInfo(name='<Your Account Name>',
 			  token='<Your Token Number>',
 			  secret='<Your SECRET Number>')` in your console. Note to get updated tokens & secrets, you can go to the [Tokens page under the menu](https://www.shinyapps.io/admin/#/tokens)
-	3. Deploy your app by running `library(rsconnect)` and then `rsconnect::deployApp('path/to/your/app')` in your console. You can use getwd() to get the current path and then update the 'path/to/your/app' to point from your current path to the directory the app.R is stored.
+	3. Deploy your app by running `rsconnect::deployApp('path/to/your/app')` in your console. You can use getwd() to get the current path and then update the 'path/to/your/app' to point from your current path to the directory the app.R is stored.
 * For more information, check out these instructions https://docs.rstudio.com/shinyapps.io/
-
 
 
