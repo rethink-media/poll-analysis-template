@@ -108,7 +108,7 @@ Running this will output a raw poll sav file that's weighted and categorized by 
 
 ### Basic_topline_crosstab_template.Rmd
 
-After you've updated and run [`Import_template.Rmd`](https://github.com/rethink-media/poll-analysis-template/blob/main/Import_template.Rmd) for your new poll, it should have output a raw poll sav file with audiences in it. This can be used to generate a new toplines file. Specify the path to this raw poll output file in this notebook and then look for all of the TODO in the notebook for what code to update for your new poll. These may be things like column names, subtotals, styling, etc ...
+After you've updated and run [`Import_template.Rmd`](https://github.com/rethink-media/poll-analysis-template/blob/main/Import_template.Rmd) for your new poll, it should have output a raw poll sav file. This can be used to generate a new toplines file. Specify the path to this raw poll output file in this notebook and then look for all of the TODO in the notebook for what code to update for your new poll. These may be things like column names, subtotals, styling, etc ...
 
 This file specifically will produce a standard/basic toplines and crosstabs.
 
@@ -124,7 +124,7 @@ Then, review any code with comments including "TODO" in the notebook. This may a
 
 ### Audience_topline_crosstab_template.Rmd
 
-After you've updated and run [`Import_template.Rmd`](https://github.com/rethink-media/poll-analysis-template/blob/main/Import_template.Rmd) for your new poll, it should have output a raw poll sav file with audiences in it. This can be used to generate a new toplines file. Specify the path to this raw poll output file in this notebook and then look for all of the TODO in the notebook for what code to update for your new poll. These may be things like column names, subtotals, styling, etc ...
+After you've updated and run [`Import_template.Rmd`](https://github.com/rethink-media/poll-analysis-template/blob/main/Import_template.Rmd) for your new poll, it should have output a raw poll sav file. If you ran an audience analysis in the [`Import_template.Rmd`] notebook, the sav file will contain an audience variable categorizing each respondent as "Base", "Persuadable" or "Opposition". This can be used to generate a new toplines file. Specify the path to this raw poll output file in this notebook and then look for all of the TODO in the notebook for what code to update for your new poll. These may be things like column names, subtotals, styling, etc ...
 
 This file specifically will produce a toplines and crosstabs that contains the audiences. Notably, the toplines will contain crosstabs of audiences with the different questions whereas the standard toplines just contains percent/counts of questions of the total respondents.
 
@@ -139,7 +139,7 @@ Then, review any code with comments including "TODO" in the notebook. This may a
 
 ### visualizations_template.Rmd
 
-After you've updated and run [`Import_template.Rmd`](https://github.com/rethink-media/poll-analysis-template/blob/main/Import_template.Rmd) for your new poll, it should have output a raw poll sav file with audiences in it. This can be used to generate a set of bar charts to display the results for emotions questions. Open up this template and edit any code with TODO in the comments above.
+After you've updated and run [`Import_template.Rmd`](https://github.com/rethink-media/poll-analysis-template/blob/main/Import_template.Rmd) for your new poll, it should have output a raw poll sav file with audiences in it. If the poll contains questions asking respondents about their emotional responses to messages/statements (in the format detailed above in the "Assumptions" section), this notebook can be used to generate a set of bar charts to display the results for emotions questions, grouped by Audience category (Base, Persuadable, Opposition). Open up this template and edit any code with TODO in the comments above.
 
 
 ### crosstab_app_functions_template.R
