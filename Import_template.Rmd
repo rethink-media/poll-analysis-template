@@ -909,8 +909,12 @@ names(weights) = var_names
 #pctlim to send in
 pctlim = .005
 
-df = run_raked_weighting(df, var_names, weights, pctlim)
-weights_compressed_vec = df$weightcompressed
+#If weighted==TRUE, run raked weighting, otherwise set all weights to 1
+if (weighted) {
+  df = run_raked_weighting(df, var_names, weights, pctlim)
+} else {
+  df$weightcompressed = 1
+  } 
 ```
 
 ```{r mover, include=FALSE}
