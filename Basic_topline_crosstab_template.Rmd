@@ -439,7 +439,10 @@ create_toplines_with_counts_matrix = function(col_string, df, subtotal_gp1 = 1:2
   mylist=mylist[startsWith(mylist,col_string)]
   
   #Need to add the actual columns to cells list for tab_cells to work
-  cells=to_list(for (i in mylist) temp[[i]])
+  cells = list()
+  for (i in mylist){
+    cells[[length(cells) + 1]] <- temp[[i]]
+    }
   
   #Start creating the table
   temp=temp %>%
