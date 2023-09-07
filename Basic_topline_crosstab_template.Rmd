@@ -553,3 +553,48 @@ for (q in names(poll_qs)){
 
 ```
 
+```{r plotting functions, echo=FALSE}
+
+title_wrapper <- function(x,wrap) {
+  x <- paste(strwrap(x,wrap),collapse="\n")
+  return(x)
+}
+
+make_single_variable_plot = function(df, poll_question_name) {
+  freqtab = fre(df[[{poll_question_name}]], weight=df$weightcompressed)
+  colnames(freqtab)[3] = 'valid_percent' #rename Valid Percent column to remove space
+  freqtab = head(freqtab, -2) #Drop bottom two rows (Total and NA)
+  
+  #fct_inorder maintains the label-level ordering
+  p = ggplot(data = freqtab, mapping = aes(x=fct_inorder(freqtab[[1]]), y=valid_percent, fill=freqtab[[1]])) +
+    geom_col() +
+    theme_bw() + #takes the gray out of the background
+    theme(legend.position="none") +
+    #reverse order of x-axis (which becomes y-axis) so it's in ascending order
+    scale_x_discrete(limits = rev) +
+    coord_flip() +
+    xlab(label="") +
+    ylab(label="Percentage of Respondents") +
+    ggtitle(title_wrapper(names(freqtab)[1], 135)) +
+    #theme(plot.title = element_text(size = 9)) +
+    theme(axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) +
+    geom_label(label=round(freqtab$valid_percent,1),colour="#FFFFFF") #adds data labels
+    
+  return(p)
+}
+
+# make a call to make_single_plot, and then write that plot object to a png file
+# in the single_plots folder
+write_single_plot <- function(df,column) {
+  p <- make_single_variable_plot(df,column)
+  file_path <- paste("single_plots/",column,".png",sep="")
+  ggsave(file_path,plot=p,width=13,height=6)
+}
+```
+
+```{r generate plots, echo=FALSE}
+for (x in names(poll_qs)) {
+  write_single_plot(df,x)
+}
+```
